@@ -35,7 +35,8 @@ import logging
 import re
 
 class CappBot(object):
-  PULL_TRACKING_LABEL = "Pull Request"
+  PULL_TRACKING_LABEL = "Pull Request Issue"
+  PULL_ORIGINAL_LABEL = "Pull Request"
   REVIEW_LABEL = "#to-review"
   ISSUE_DEFAULT_LABELS = [REVIEW_LABEL]
 
@@ -72,6 +73,12 @@ class CappBot(object):
     # comment = None
     logbook.info("Commented on issue #%d: %s" % (issue.number, body))
     return comment
+
+  def add_label(self, issue, label):
+    if label in issue.labels:
+      return
+    self.github.issues.add_label(self.repo_name, issue.number, label)
+    logbook.info("Labeled issue #%d: %s" % (issue.number, label))
 
   def get_issue_number_for_pull(self, pull_request):
     for comment in self.github.issues.comments(self.repo_name, pull_request.number):
@@ -128,6 +135,8 @@ class CappBot(object):
 
     # Make sure each pull request has a proper issue.
     for pull_request in pull_requests:
+      self.add_label(pull_request, self.PULL_ORIGINAL_LABEL)
+
       issue_number = self.get_issue_number_for_pull(pull_request)
       if issue_number is not None:
         issue = self.github.issues.show(self.repo_name, issue_number)
@@ -142,7 +151,7 @@ class CappBot(object):
           self.github.issues.add_label(repo_name, issue.number, label)
 
       # Add this flag whether the issue or new, or an old issue on which the flag somehow disappeared.
-      self.github.issues.add_label(repo_name, issue.number, self.PULL_TRACKING_LABEL)
+      self.add_label(issue, self.PULL_TRACKING_LABEL)
 
       # Now we have the tracking issue for the pull request (possibly newly created).
       self.sync_comments(pull_request, issue)
