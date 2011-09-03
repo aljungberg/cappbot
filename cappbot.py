@@ -55,7 +55,7 @@ class CappBot(object):
   PULL_REQUEST_COMMENT_FORMAT = "[Issue #{0.number:d}]({0.html_url}) has been created to track this pull request.\n\n*NOTE: This pull request is now being tracked by issue #{0.number:d}. Please use that issue for all future comments on this pull request.*"
   # If this is ever changed, the new regex needs to be backwards compatible with the first format,
   # or duplicates will result.
-  PULL_REQUEST_COMMENT_REGEX = r'^\[Issue #(\d+)\]\(.*?\) has been created to track this pull request\..*$'
+  PULL_REQUEST_COMMENT_REGEX = r'^\[Issue #(\d+)\]\(.*?\) has been created to track this pull request\..*'
   PULL_REQUEST_DONT_SYNC_COMMENT_KEYWORD = '#cappbot-ignore'
 
   def __init__(self, repo_name, user, token):
