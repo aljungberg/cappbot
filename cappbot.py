@@ -42,20 +42,20 @@ class CappBot(object):
 
   # Receives the pull request the issue will be for as the first formatting argument.
   ISSUE_TITLE_FORMAT = "[Pull request #{0.number:d}] {0.title}"
-  ISSUE_COMMENT_FORMAT = "This issue tracks pull request #{0.number:d}: {0.body}."
-  ISSUE_PULL_CLOSED_FORMAT = "Pull request #{0.number:d} has been closed. ~~~ CappBot"
-  ISSUE_PULL_REOPENED_FORMAT = "Pull request #{0.number:d} has been reopened. ~~~ CappBot"
+  ISSUE_COMMENT_FORMAT = "*This issue tracks [pull request #{0.number:d}]({0.html_url}):*\n{0.body}"
+  ISSUE_PULL_CLOSED_FORMAT = "Pull request #{0.number:d} has been closed."
+  ISSUE_PULL_REOPENED_FORMAT = "Pull request #{0.number:d} has been reopened."
   # {0} is source comment
-  ISSUE_MOVED_COMMENT_FORMAT = "*[Pull request comment by [{0.user}](https://github.com/{0.user}) at {0.created_at}]:*\n{0.body}\n *~~~~ CappBot*"
+  ISSUE_MOVED_COMMENT_FORMAT = "*[Pull request comment by [{0.user}](https://github.com/{0.user}) at {0.created_at}]:*\n{0.body}"
   # If this is ever changed, the new regex needs to be backwards compatible with the first format,
   # or duplicates will result.
-  ISSUE_MOVED_COMMENT_REGEX = r'^\*\[Pull request comment by (.*?) at (.*?)\]:\*\n(.*?)\n \*~~~~ CappBot\*$'
+  ISSUE_MOVED_COMMENT_REGEX = r'^\*\[Pull request comment by (.*?) at (.*?)\]:\*\n(.*?)$'
 
   # Receives the new issue request as the first formatting argument.
-  PULL_REQUEST_COMMENT_FORMAT = "Issue #{0.number:d} has been created to track this pull request. ~~~ CappBot"
+  PULL_REQUEST_COMMENT_FORMAT = "[Issue #{0.number:d}]({0.html_url}) has been created to track this pull request."
   # If this is ever changed, the new regex needs to be backwards compatible with the first format,
   # or duplicates will result.
-  PULL_REQUEST_COMMENT_REGEX = r'^Issue #(\d+) has been created to track this pull request\. ~~~ CappBot$'
+  PULL_REQUEST_COMMENT_REGEX = r'^\[Issue #(\d+)\]\(.*?\) has been created to track this pull request\.$'
   PULL_REQUEST_DONT_SYNC_COMMENT_KEYWORD = '#cappbot-ignore'
 
   def __init__(self, repo_name, user, token):
@@ -114,7 +114,6 @@ class CappBot(object):
           continue
 
         m = re.match(self.ISSUE_MOVED_COMMENT_REGEX, dest_comment.body)
-        print m.groups()
         if m and source_comment.user in m.group(1) and m.group(3) == source_comment.body:
           logbook.debug("Not copying source comment '%s' because this looks familiar: '%s'." % (source_comment.body, dest_comment.body))
           break
