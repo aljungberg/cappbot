@@ -182,10 +182,10 @@ class CappBot(object):
 
         return []
 
-    def get_labels_after_interpreting_new_comments(self, issue):
+    def altered_labels_by_interpreting_new_comments(self, issue, labels):
         new_comments = self.get_new_comments(issue)
+        labels = labels.copy()
 
-        labels = set(label.name for label in issue.labels)
         for comment in new_comments:
             if not comment.body:
                 continue
@@ -204,8 +204,16 @@ class CappBot(object):
                     if remove_label in labels:
                         logbook.info("Removing label %s due to comment %s by %s" % (remove_label, comment.id, comment.user.login))
                         labels.remove(remove_label)
+        return labels
 
-        return list(labels)
+    def altered_labels_per_removal_rules(self, issue, labels):
+        for trigger_label, labels_to_remove in settings.WHEN_LABEL_REMOVE_LABELS.items():
+            if trigger_label in labels:
+                updated_labels = labels.difference(set(labels_to_remove))
+                if updated_labels != labels:
+                    logbook.info("Removed label(s) %s due to label %s being set" % (", ".join(labels.difference(updated_labels)), trigger_label))
+                    labels = updated_labels
+        return labels
 
     def run(self):
         github = self.github
@@ -261,12 +269,19 @@ class CappBot(object):
             if not changes:
                 continue
 
+            original_labels = set(label.name for label in issue.labels)
+            new_labels = original_labels.copy()
+
             if 'comments' in changes:
                 # Check for action comments which change labels.
-                new_labels = self.get_labels_after_interpreting_new_comments(issue)
-                if not self.dry_run:
-                    issue.patch(labels=new_labels)
+                new_labels = self.altered_labels_by_interpreting_new_comments(issue, new_labels)
+                self.record_latest_seen_comment(issue)
 
+            # Remove labels superseded by new labels.
+            new_labels = self.altered_labels_per_removal_rules(issue, new_labels)
+
+            if new_labels != original_labels and not self.dry_run:
+                    issue.patch(labels=list(new_labels))
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
