@@ -251,6 +251,7 @@ class Milestones(ListObject):
 
         return milestone
 
+
 class Comment(GitHubRemoteObject):
     """A GitHub issue comment.
 
@@ -299,6 +300,72 @@ class Comments(ListObject):
 
         url = '%s/comments' % issue.url
         return cls.get(url, http=http)
+
+
+class Event(GitHubRemoteObject):
+    """A GitHub event.
+
+    `GET /events`
+
+    {
+      "type": "Event",
+      "public": true,
+      "payload": {
+
+      },
+      "repo": {
+        "id": 3,
+        "name": "octocat/Hello-World",
+        "url": "https://api.github.com/repos/octocat/Hello-World"
+      },
+      "actor": {
+        "login": "octocat",
+        "id": 1,
+        "avatar_url": "https://github.com/images/error/octocat_happy.gif",
+        "gravatar_id": "somehexcode",
+        "url": "https://api.github.com/users/octocat"
+      },
+      "org": {
+        "login": "octocat",
+        "id": 1,
+        "avatar_url": "https://github.com/images/error/octocat_happy.gif",
+        "gravatar_id": "somehexcode",
+        "url": "https://api.github.com/users/octocat"
+      },
+      "created_at": "2011-09-06T17:26:27Z"
+    }
+
+    """
+
+    id = fields.Field()
+    type = fields.Field()
+    public = fields.Field()
+    payload = fields.Field()
+    repo = fields.Field()
+    actor = fields.Object(User)
+    org = fields.Object(User)
+    created_at = fields.Field()
+
+    def __unicode__(self):
+        return u"<Event %s>" % self.id
+
+
+class Events(ListObject):
+    entries = fields.List(fields.Object(Event))
+
+    def __getitem__(self, key):
+        return self.entries.__getitem__(key)
+
+    @classmethod
+    def by_repository(cls, repo_user, repo_name, http=None, **kwargs):
+        """Get events by repository.
+
+        `GET /repos/:user/:repo/events`
+
+        """
+
+        url = '/repos/%s/%s/events' % (repo_user, repo_name)
+        return cls.get(urljoin(GitHub.endpoint, url), http=http)
 
 
 class Issue(GitHubRemoteObject):
@@ -416,6 +483,8 @@ class GitHub(object):
         SharedGitHub = self
 
         self.User = User
+        self.Event = Event
+        self.Events = Events
         self.Issue = Issue
         self.Issues = Issues
         self.Label = Label
@@ -445,6 +514,9 @@ if __name__ == '__main__':
     print u"Authenticated user: %s (%r)" % (current_user.login, current_user.to_dict())
 
     issues = github.Issues.by_repository("aljungberg", "bottest2")
-    print issues._location
     for issue in issues:
         print u"Found issue: %s (%s)" % (issue, issue.title)
+
+    events = github.Events.by_repository("aljungberg", "bottest2")
+    for event in events:
+        print u"Event: %s (%s)" % (event, event.to_dict())
