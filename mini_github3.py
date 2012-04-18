@@ -251,6 +251,55 @@ class Milestones(ListObject):
 
         return milestone
 
+class Comment(GitHubRemoteObject):
+    """A GitHub issue comment.
+
+    `GET /repos/:user/:repo/issues/comments/:id`
+
+    {
+      "url": "https://api.github.com/repos/octocat/Hello-World/issues/comments/1",
+      "body": "Me too",
+      "user": {
+        "login": "octocat",
+        "id": 1,
+        "avatar_url": "https://github.com/images/error/octocat_happy.gif",
+        "gravatar_id": "somehexcode",
+        "url": "https://api.github.com/users/octocat"
+      },
+      "created_at": "2011-04-14T16:00:49Z",
+      "updated_at": "2011-04-14T16:00:49Z"
+    }
+
+    """
+
+    id = fields.Field()
+    url = fields.Field()
+    body = fields.Field()
+    user = fields.Object(User)
+    created_at = fields.Field()
+    updated_at = fields.Field()
+
+    def __unicode__(self):
+        return u"<Comment %s>" % self.id
+
+
+class Comments(ListObject):
+    entries = fields.List(fields.Object(Comment))
+
+    def __getitem__(self, key):
+        return self.entries.__getitem__(key)
+
+    @classmethod
+    def by_issue(cls, issue, http=None, **kwargs):
+        """Get comments by issue.
+
+        `GET /repos/:user/:repo/issues/:number/comments`
+
+        """
+
+        url = '%s/comments' % issue.url
+        return cls.get(url, http=http)
+
 
 class Issue(GitHubRemoteObject):
     """A GitHub issue.
@@ -373,6 +422,8 @@ class GitHub(object):
         self.Labels = Labels
         self.Milestone = Milestone
         self.Milestones = Milestones
+        self.Comment = Comment
+        self.Comments = Comments
 
     def current_user(self, **kwargs):
         return User.get_user(**kwargs)
