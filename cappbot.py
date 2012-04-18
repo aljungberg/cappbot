@@ -73,6 +73,7 @@ class CappBot(object):
     def __init__(self, settings, database, dry_run=False):
         self.settings = settings
         self.github = GitHub(api_token=settings.GITHUB_TOKEN)
+        self.current_user = self.github.current_user()
         self.repo_user, self.repo_name = settings.GITHUB_REPOSITORY.split("/")
         self.database = database
         self.dry_run = dry_run
@@ -129,6 +130,8 @@ class CappBot(object):
     def run(self):
         github = self.github
 
+        logbook.info("Logged in as %s." % self.current_user.login)
+
         # Ensure all labels exist.
         defs = self.settings.NEW_ISSUE_DEFAULTS
         for label in defs.get('labels', []):
@@ -143,6 +146,14 @@ class CappBot(object):
             if self.has_seen_issue(issue):
                 # It's not a new issue if we have recorded it previously.
                 continue
+
+            # Check for comments we've made to this issue previously. Any such comment would indicate
+            # there's a problem since we believe !has_seen_issue(issue).
+            if issue.comments > 0 and any(comment for comment in github.Comments.by_issue(issue) if comment.user.login == self.current_user.login):
+                logbook.warning(u"Déjà vu: it looks like CappBot has interacted with %s but it's not in the database. Ignoring the issue." % issue)
+                issue._should_ignore = True
+                continue
+            issue._should_ignore = False
 
             if is_issue_new(issue):
                 logbook.info(u"Issue %s is new." % issue)
