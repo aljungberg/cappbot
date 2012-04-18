@@ -70,11 +70,12 @@ def is_issue_new(issue):
 
 
 class CappBot(object):
-    def __init__(self, settings, database):
+    def __init__(self, settings, database, dry_run=False):
         self.settings = settings
         self.github = GitHub(api_token=settings.GITHUB_TOKEN)
         self.repo_user, self.repo_name = settings.GITHUB_REPOSITORY.split("/")
         self.database = database
+        self.dry_run = dry_run
 
     def has_seen_issue(self, issue):
         """Return true if the issue is in our database."""
@@ -121,7 +122,8 @@ class CappBot(object):
             patch['assignee'] = defs['assignee']
 
         if len(patch):
-            issue.patch(**patch)
+            if not self.dry_run:
+                issue.patch(**patch)
             logbook.info(u"Installed defaults %r for issue %s." % (patch, issue))
 
     def run(self):
@@ -157,6 +159,8 @@ if __name__ == '__main__':
 
     parser.add_argument('--settings', default='settings.py',
         help='Settings file to use')
+    parser.add_argument('-n', '--dry-run', action='store_true', default=False, dest='dry_run',
+        help='Only pretend to make changes')
 
     args = parser.parse_args()
 
@@ -169,7 +173,8 @@ if __name__ == '__main__':
         database = {}
 
     try:
-        CappBot(settings, database).run()
+        CappBot(settings, database, dry_run=args.dry_run).run()
     finally:
-        with open(settings.DATABASE, 'wb') as f:
-            json.dump(database, f, indent=2)
+        if not args.dry_run:
+            with open(settings.DATABASE, 'wb') as f:
+                json.dump(database, f, indent=2)
