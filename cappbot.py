@@ -17,173 +17,159 @@
 
 """
 
-Create 'tracking issues' for each pull request in a GitHub repo so that the pull request can be triaged, labeled and assigned through its tracking issue. Since the tracking issue will be the focal point of discussion on the pull request, any discussion in the pull request is also moved over to the tracking issue.
+Perform various automation and paper trail functionality on GitHub issues to augment the issues system to better support an open source project.
+
+ * For each new issue:
+     * Label it as #new.
+     * Set the milestone to Someday.
+ * For every issue:
+     * Detect when the labels, milestone or assignee changes and post the new information as a comment. This leaves a "paper trail" so that readers can see *when* things happened. It answers questions like "when was this label added?" or "when was this issue assigned to the current assignee?"
+     * Detect special syntax in comments to add or remove labels. For example, `+#needs-test` on a line by itself adds the `#needs-test` label, while `-AppKit` would remove the `AppKit` label.
+     * Remove labels automatically. If an issue receives the label `#accepted`, CappBot would remove `#needs-test` for instance.
+     * All of the above features greatly assist when working with Pull requests because labels are usually not visible nor changeable from within a Pull request on github.com.
+     * Track voting: if a user writes +1 or -1 on a line by itself, CappBot records that user's vote and writes the tally of votes in the issue title. E.g. `Reduce load time [+3]`.
+
 """
+
+# Requirements:
+#
+#     pip install remoteobjects
 
 # TODO
 # In the future, CappBot can be extended to support issue triaging in general:
-# * add '#to-review' labels to new issues
-# * echo label, assignment and milestone changes in the comments to leave a proper paper trail with dates
-# * move issues still open to future milestones when an existing milestone is closed ('left-over' issues)
 # * close dead issues (e.g. issue has #needs-patch label but no patch has been added in 6 months)
 
-from github2.client import Github
-from logbook.compat import RedirectLoggingHandler
+# Here's the plan:
+#
+# * Find all new issues. For each:
+#   1. if the issue already has a label, consider it manually triaged and just record its state.
+#   2. otherwise assign the `#new` label and default milestone.
+# * Check the `events` feed to look for changed issues. For each changed issue:
+#   1. if a comment has been made, look for label changing syntax and update the labels accordingly. Also look for voting syntax and update votes accordingly (making sure to prevent double voting.)
+#   2. if a new label has been added which implies other labels should be removed, remove them.
+#   3. if the labels, milestone or assignee has been changed, post a status update comment.
+#   4. if the voting tally has changed, add it to the title.
+#
+# For determining what is 'new' and what is old, keep a small local database recording the newest change we've
+# processed.
+
 import argparse
+import imp
+import json
 import logbook
-import logging
+import os
 import re
+
+from mini_github3 import GitHub
+
+
+def is_issue_new(issue):
+    """Return True if an issue hasn't been manually configured before CappBot got to it."""
+
+    return issue.milestone is None and issue.assignee is None and not any(label for label in issue.labels)
 
 
 class CappBot(object):
-    PULL_TRACKING_LABEL = "Pull Request Issue"
-    PULL_ORIGINAL_LABEL = "Pull Request"
-    REVIEW_LABEL = "#to-review"
-    ISSUE_DEFAULT_LABELS = [REVIEW_LABEL]
+    def __init__(self, settings, database):
+        self.settings = settings
+        self.github = GitHub(api_token=settings.GITHUB_TOKEN)
+        self.repo_user, self.repo_name = settings.GITHUB_REPOSITORY.split("/")
+        self.database = database
 
-    # Receives the pull request the issue will be for as the first formatting argument.
-    ISSUE_TITLE_FORMAT = "[Pull request #{0.number:d}] {0.title}"
-    ISSUE_COMMENT_FORMAT = "*This issue tracks [pull request #{0.number:d}]({0.html_url}):*\n{0.body}"
-    ISSUE_PULL_CLOSED_FORMAT = "Pull request #{0.number:d} has been closed."
-    ISSUE_PULL_REOPENED_FORMAT = "Pull request #{0.number:d} has been reopened."
-    # {0} is source comment
-    ISSUE_MOVED_COMMENT_FORMAT = "*[Pull request comment by [{0.user}](https://github.com/{0.user}) at {0.created_at}]:*\n{0.body}"
-    # If this is ever changed, the new regex needs to be backwards compatible with the first format,
-    # or duplicates will result.
-    ISSUE_MOVED_COMMENT_REGEX = r'^\*\[Pull request comment by (.*?) at (.*?)\]:\*\n(.*?)$'
+    def has_seen_issue(self, issue):
+        """Return true if the issue is in our database."""
 
-    # Receives the new issue request as the first formatting argument.
-    PULL_REQUEST_COMMENT_FORMAT = "[Issue #{0.number:d}]({0.html_url}) has been created to track this pull request.\n\n*NOTE: This pull request is now being tracked by issue #{0.number:d}. Please use that issue for all future comments on this pull request.*"
-    # If this is ever changed, the new regex needs to be backwards compatible with the first format,
-    # or duplicates will result.
-    PULL_REQUEST_COMMENT_REGEX = r'^\[Issue #(\d+)\]\(.*?\) has been created to track this pull request\..*'
-    PULL_REQUEST_DONT_SYNC_COMMENT_KEYWORD = '#cappbot-ignore'
+        db = self.database
 
-    def __init__(self, repo_name, user, token):
-        self.github = Github(username=user, api_token=token, requests_per_second=100)
-        self.repo_name = repo_name
-        self.username = user
+        return 'issues' in db and db['issues'].get(unicode(issue.id)) is not None
 
-    def create_issue(self, title, body):
-        issue = self.github.issues.open(self.repo_name, title, body)
-        logbook.info("Created issue %d: %s." % (issue.number, title))
-        return issue
+    def record_issue(self, issue):
+        """Record the information we need to detect whether an issue has been changed."""
 
-    def create_comment(self, issue, body):
-        comment = self.github.issues.comment(self.repo_name, issue.number, body)
-        # comment = None
-        logbook.info("Commented on issue #%d: %s" % (issue.number, body))
-        return comment
+        db = self.database
 
-    def add_label(self, issue, label):
-        if label in issue.labels:
-            return
-        self.github.issues.add_label(self.repo_name, issue.number, label)
-        logbook.info("Labeled issue #%d: %s" % (issue.number, label))
+        if not 'issues' in db:
+            db['issues'] = {}
 
-    def get_issue_number_for_pull(self, pull_request):
-        for comment in self.github.issues.comments(self.repo_name, pull_request.number):
-            if not comment.user == self.username:
-                continue
+        db_issue = {
+            'id': int(issue.id),
+            'number': int(issue.number),
+            'milestone_number': int(issue.milestone.number) if issue.milestone else None,
+            'assignee_id': int(issue.assignee.id) if issue.assignee else None,  # github3 is a little inconsistent ATM.
+            'labels': [label.name for label in issue.labels]
+        }
 
-            m = re.match(self.PULL_REQUEST_COMMENT_REGEX, comment.body)
-            if not m:
-                continue
+        # Note we need to use string keys for our JSON database's sake.
+        db['issues'][unicode(issue.id)] = db_issue
 
-            return int(m.group(1))
+    def install_issue_defaults(self, issue):
+        """Assign default issue labels, milestone and assignee, if any."""
 
-    def sync_comments(self, source, dest):
-        source_comments = list(self.github.issues.comments(self.repo_name, source.number))
-        dest_comments = list(self.github.issues.comments(self.repo_name, dest.number))
+        defs = self.settings.NEW_ISSUE_DEFAULTS
 
-        # Copy over all comments which haven't already been copied over. Unfortunately we can't
-        # insert comments anywhere but at the end, so the comment stream might get out of order
-        # if people comment faster than CappBot moves things.
-        for source_comment in source_comments:
-            # Don't copy over CappBot's own comments.
-            if source_comment.user == self.username:
-                continue
+        patch = {}
 
-            # Ignore comments containing an ignore tag.
-            if self.PULL_REQUEST_DONT_SYNC_COMMENT_KEYWORD in source_comment.body:
-                continue
+        milestone_title = defs.get('milestone')
+        if milestone_title:
+            milestone = self.github.Milestones.get_or_create_in_repository(self.repo_user, self.repo_name, milestone_title)
+            patch['milestone'] = milestone.number
 
-            # Only copy comments over once.
-            for dest_comment in dest_comments:
-                # We're only looking for comments cappbot made.
-                if dest_comment.user != self.username:
-                    continue
+        if defs.get('labels') is not None:
+            patch['labels'] = defs['labels']
 
-                m = re.match(self.ISSUE_MOVED_COMMENT_REGEX, dest_comment.body)
-                if m and source_comment.user in m.group(1) and m.group(3) == source_comment.body:
-                    logbook.debug("Not copying source comment '%s' because this looks familiar: '%s'." % (source_comment.body, dest_comment.body))
-                    break
-            else:
-                # No match.
-                formatted_comment = self.ISSUE_MOVED_COMMENT_FORMAT.format(source_comment, dest, source_comment)
-                self.create_comment(dest, formatted_comment)
+        if defs.get('assignee') is not None:
+            patch['assignee'] = defs['assignee']
+
+        if len(patch):
+            issue.patch(**patch)
+            logbook.info(u"Installed defaults %r for issue %s." % (patch, issue))
 
     def run(self):
         github = self.github
-        repo_name = self.repo_name
 
-        pull_requests = github.pull_requests.list(repo_name, state='open') + github.pull_requests.list(repo_name, state='closed')
-        logbook.info("Found %d pull request(s)." % len(pull_requests))
+        # Ensure all labels exist.
+        defs = self.settings.NEW_ISSUE_DEFAULTS
+        for label in defs.get('labels', []):
+            self.github.Labels.get_or_create_in_repository(self.repo_user, self.repo_name, label)
 
-        # Filter out pull requests we have already dealt with.
-        # pull_requests = [request for request in pull_requests if request.discussion]
+        # Find all issues.
+        issues = github.Issues.by_repository(self.repo_user, self.repo_name)
 
-        # Make sure each pull request has a proper issue.
-        for pull_request in pull_requests:
-            self.add_label(pull_request, self.PULL_ORIGINAL_LABEL)
+        logbook.info("Found %d issue(s)." % len(issues))
 
-            issue_number = self.get_issue_number_for_pull(pull_request)
-            if issue_number is not None:
-                issue = self.github.issues.show(self.repo_name, issue_number)
+        for issue in issues:
+            if self.has_seen_issue(issue):
+                # It's not a new issue if we have recorded it previously.
+                continue
 
-                if not issue:
-                    logbook.warn("The tracking issue for pull request #%d is gone. Skipping." % pull_request.number)
-                    continue
+            if is_issue_new(issue):
+                logbook.info(u"Issue %s is new." % issue)
+
+                # Assign default labels and milestone.
+                self.install_issue_defaults(issue)
             else:
-                issue = self.create_issue(title=self.ISSUE_TITLE_FORMAT.format(pull_request), body=self.ISSUE_COMMENT_FORMAT.format(pull_request))
-                self.create_comment(pull_request, self.PULL_REQUEST_COMMENT_FORMAT.format(issue))
-                for label in self.ISSUE_DEFAULT_LABELS:
-                    self.github.issues.add_label(repo_name, issue.number, label)
+                logbook.info(u"Recording manually triaged issue %d." % issue.id)
 
-            # Add this flag whether the issue or new, or an old issue on which the flag somehow disappeared.
-            self.add_label(issue, self.PULL_TRACKING_LABEL)
-
-            # Now we have the tracking issue for the pull request (possibly newly created).
-            self.sync_comments(pull_request, issue)
-
-            # If the pull request is closed, the tracking issue can be closed.
-            # Do this last so that any final comments have been synced before the issue is closed.
-            if pull_request.state == 'closed' and issue.state == 'open':
-                self.create_comment(issue, self.ISSUE_PULL_CLOSED_FORMAT.format(pull_request, issue))
-                self.github.issues.close(repo_name, issue.number)
-            elif pull_request.state == 'open' and issue.state == 'closed':
-                # The pull request has been reopened (or someone closed the issue without closing the pull request.)
-                self.create_comment(issue, self.ISSUE_PULL_REOPENED_FORMAT.format(pull_request, issue))
-                self.github.issues.reopen(repo_name, issue.number)
+            self.record_issue(issue)
 
 if __name__ == '__main__':
-    github_logger = logging.getLogger('github2.request')
-    github_logger.addHandler(RedirectLoggingHandler())
-
     parser = argparse.ArgumentParser(description=__doc__)
 
-    parser.add_argument('repository',
-        help='GitHub repository to work with, e.g. cappuccino/cappuccino')
-    parser.add_argument('--username', default='cappbot',
-        help='GitHub username to use')
-    parser.add_argument('--api-token-path', default='secret_api_token.txt',
-        help='the path to a file containing the GitHub API token to use')
+    parser.add_argument('--settings', default='settings.py',
+        help='Settings file to use')
 
     args = parser.parse_args()
 
-    with open(args.api_token_path, "rb") as f:
-        github_token = f.read().strip()
-    if not github_token:
-        raise Exception("unable to load API token")
+    settings = imp.load_source('settings', args.settings)
 
-    CappBot(args.repository, args.username, github_token).run()
+    if os.path.exists(settings.DATABASE):
+        with open(settings.DATABASE, 'rb') as f:
+            database = json.load(f)
+    else:
+        database = {}
+
+    try:
+        CappBot(settings, database).run()
+    finally:
+        with open(settings.DATABASE, 'wb') as f:
+            json.dump(database, f, indent=2)
