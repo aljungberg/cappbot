@@ -516,6 +516,8 @@ if __name__ == '__main__':
     issues = github.Issues.by_repository("aljungberg", "bottest2")
     for issue in issues:
         print u"Found issue: %s (%s)" % (issue, issue.title)
+        for comment in github.Comments.by_issue(issue):
+            print u"Comment: %r" % comment.to_dict()
 
     events = github.Events.by_repository("aljungberg", "bottest2")
     for event in events:

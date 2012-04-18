@@ -44,7 +44,7 @@ Perform various automation and paper trail functionality on GitHub issues to aug
 # * Find all new issues. For each:
 #   1. if the issue already has a label, consider it manually triaged and just record its state.
 #   2. otherwise assign the `#new` label and default milestone.
-# * Check the `events` feed to look for changed issues. For each changed issue:
+# * Check for changed issues. For each changed issue:
 #   1. if a comment has been made, look for label changing syntax and update the labels accordingly. Also look for voting syntax and update votes accordingly (making sure to prevent double voting.)
 #   2. if a new label has been added which implies other labels should be removed, remove them.
 #   3. if the labels, milestone or assignee has been changed, post a status update comment.
@@ -61,6 +61,9 @@ import os
 import re
 
 from mini_github3 import GitHub
+
+ADD_LABEL_REGEX = re.compile(r'^\+([-\w\d _#]*[-\w\d_#]+)$|^(#[-\w\d _#]*[-\w\d_#]+)$')
+REMOVE_LABEL_REGEX = re.compile(r'^-([-\w\d _#]*[-\w\d_#]+)$')
 
 
 def is_issue_new(issue):
@@ -96,13 +99,48 @@ class CappBot(object):
         db_issue = {
             'id': int(issue.id),
             'number': int(issue.number),
+            'comments_count': int(issue.comments),
             'milestone_number': int(issue.milestone.number) if issue.milestone else None,
             'assignee_id': int(issue.assignee.id) if issue.assignee else None,  # github3 is a little inconsistent ATM.
-            'labels': [label.name for label in issue.labels]
+            'labels': sorted(label.name for label in issue.labels),
         }
 
         # Note we need to use string keys for our JSON database's sake.
-        db['issues'][unicode(issue.id)] = db_issue
+        key = unicode(issue.id)
+        if key in db['issues']:
+            db['issues'][key].update(key, db_issue)
+        else:
+            db_issue['votes'] = None
+            db_issue['latest_seen_comment_id'] = None
+            db['issues'][key] = db_issue
+
+    def record_latest_seen_comment(self, issue):
+        """Record the id of the newest comment so we can recognise new comments in the future."""
+
+        db = self.database
+
+        db['issues'][unicode(issue.id)]['latest_seen_comment_id'] = issue._comments[-1].id if issue._comments else None
+
+    def get_issue_changes(self, issue):
+        """Examine the given issue against what is stored in the database to see how it's been changed, if it has."""
+
+        # Issue must be recorded at this point.
+        record = self.database['issues'][unicode(issue.id)]
+
+        r = set()
+        if record['labels'] != sorted(label.name for label in issue.labels):
+            r.add('labels')
+
+        if record['assignee_id'] != (int(issue.assignee.id) if issue.assignee else None):
+            r.add('assignee')
+
+        if record['milestone_number'] != (int(issue.milestone.number) if issue.milestone else None):
+            r.add('milestone')
+
+        if issue.comments and (record['latest_seen_comment_id'] is None or record['latest_seen_comment_id'] != int(issue._comments[-1].id)):
+            r.add('comments')
+
+        return r
 
     def install_issue_defaults(self, issue):
         """Assign default issue labels, milestone and assignee, if any."""
@@ -127,6 +165,48 @@ class CappBot(object):
                 issue.patch(**patch)
             logbook.info(u"Installed defaults %r for issue %s." % (patch, issue))
 
+    def get_new_comments(self, issue):
+        """Get all comments which are new since the last call to record_latest_seen_comment."""
+
+        record = self.database['issues'][unicode(issue.id)]
+        latest_seen_comment_id = record['latest_seen_comment_id']
+
+        comments = issue._comments
+
+        if latest_seen_comment_id is None:
+            return comments
+
+        for n, comment in enumerate(comments):
+            if comment.id == latest_seen_comment_id:
+                return comments[n + 1:]
+
+        return []
+
+    def get_labels_after_interpreting_new_comments(self, issue):
+        new_comments = self.get_new_comments(issue)
+
+        labels = set(label.name for label in issue.labels)
+        for comment in new_comments:
+            if not comment.body:
+                continue
+
+            for line in comment.body.split('\n'):
+                line = line.strip()
+                m = ADD_LABEL_REGEX.match(line)
+                if m:
+                    new_label = m.group(1) or m.group(2)
+                    if not new_label in labels:
+                        logbook.info("Adding label %s due to comment %s by %s" % (new_label, comment.id, comment.user.login))
+                        labels.add(new_label)
+                m = REMOVE_LABEL_REGEX.match(line)
+                if m:
+                    remove_label = m.group(1)
+                    if remove_label in labels:
+                        logbook.info("Removing label %s due to comment %s by %s" % (remove_label, comment.id, comment.user.login))
+                        labels.remove(remove_label)
+
+        return list(labels)
+
     def run(self):
         github = self.github
 
@@ -137,23 +217,29 @@ class CappBot(object):
         for label in defs.get('labels', []):
             self.github.Labels.get_or_create_in_repository(self.repo_user, self.repo_name, label)
 
+        self.known_labels = set(label.name for label in self.github.Labels.by_repository(self.repo_user, self.repo_name))
+
         # Find all issues.
         issues = github.Issues.by_repository(self.repo_user, self.repo_name)
 
         logbook.info("Found %d issue(s)." % len(issues))
 
         for issue in issues:
+            issue._should_ignore = False
+
+            # We'll need this now or later, or both.
+            issue._comments = github.Comments.by_issue(issue)
+
             if self.has_seen_issue(issue):
                 # It's not a new issue if we have recorded it previously.
                 continue
 
             # Check for comments we've made to this issue previously. Any such comment would indicate
             # there's a problem since we believe !has_seen_issue(issue).
-            if issue.comments > 0 and any(comment for comment in github.Comments.by_issue(issue) if comment.user.login == self.current_user.login):
+            if issue.comments > 0 and any(comment for comment in issue._comments if comment.user.login == self.current_user.login):
                 logbook.warning(u"Déjà vu: it looks like CappBot has interacted with %s but it's not in the database. Ignoring the issue." % issue)
                 issue._should_ignore = True
                 continue
-            issue._should_ignore = False
 
             if is_issue_new(issue):
                 logbook.info(u"Issue %s is new." % issue)
@@ -164,6 +250,23 @@ class CappBot(object):
                 logbook.info(u"Recording manually triaged issue %d." % issue.id)
 
             self.record_issue(issue)
+
+        # Check changed issues.
+        for issue in issues:
+            if issue._should_ignore:
+                continue
+
+            changes = self.get_issue_changes(issue)
+
+            if not changes:
+                continue
+
+            if 'comments' in changes:
+                # Check for action comments which change labels.
+                new_labels = self.get_labels_after_interpreting_new_comments(issue)
+                if not self.dry_run:
+                    issue.patch(labels=new_labels)
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
