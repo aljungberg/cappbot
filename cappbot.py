@@ -65,6 +65,7 @@ from mini_github3 import GitHub
 ADD_LABEL_REGEX = re.compile(r'^\+([-\w\d _#]*[-\w\d_#]+)$|^(#[-\w\d _#]*[-\w\d_#]+)$')
 REMOVE_LABEL_REGEX = re.compile(r'^-([-\w\d _#]*[-\w\d_#]+)$')
 
+VOTE_REGEX = re.compile(r'^[-\+][01]$')
 
 def is_issue_new(issue):
     """Return True if an issue hasn't been manually configured before CappBot got to it."""
@@ -215,6 +216,40 @@ class CappBot(object):
                     labels = updated_labels
         return labels
 
+    def recount_votes(self, issue):
+        """Search for comments with +1 or -1 on a line by itself, and count the last such line as the commenting
+        user's vote. Record the total in the database and return whether it changed since the previous recording.
+        The special syntax 0, +0 or -0 is also allowed to reset a previously made vote or to express a non counted
+        opinion.
+
+        """
+
+        votes = {}
+        for comment in issue._comments:
+            if not comment.body:
+                continue
+
+            for line in comment.body.split('\n'):
+                line = line.strip()
+
+                if VOTE_REGEX.match(line):
+                    # If a user votes more than once, the final vote is what will count.
+                    votes[comment.user.login] = int(line)
+
+        # Differentiate between a vote of 0 (e.g. +1, -1) and no votes.
+        score = sum(votes.values()) if len(votes) else None
+        record = self.database['issues'][unicode(issue.id)]
+        if score != record['votes']:
+            record['votes'] = score
+            return True
+        return False
+
+    def get_vote_count(self, issue):
+        """Return the vote tally for the issue."""
+
+        record = self.database['issues'][unicode(issue.id)]
+        return record['votes']
+
     def run(self):
         github = self.github
 
@@ -272,10 +307,14 @@ class CappBot(object):
             original_labels = set(label.name for label in issue.labels)
             new_labels = original_labels.copy()
 
+            did_change_votes = False
             if 'comments' in changes:
                 # Check for action comments which change labels.
                 new_labels = self.altered_labels_by_interpreting_new_comments(issue, new_labels)
                 self.record_latest_seen_comment(issue)
+
+                # Count votes.
+                did_change_votes = self.recount_votes(issue)
 
             # Remove labels superseded by new labels.
             new_labels = self.altered_labels_per_removal_rules(issue, new_labels)
@@ -285,10 +324,12 @@ class CappBot(object):
 
             # Post paper trail.
             changes = changes.difference(set(['comments']))
+            if did_change_votes:
+                changes.add('votes')
             if new_labels != original_labels:
                 changes.add('labels')
             if len(changes):
-                msg = settings.getPaperTrailMessage(issue.assignee.login if issue.assignee else None, issue.milestone.title if issue.milestone else None, new_labels)
+                msg = settings.getPaperTrailMessage(issue.assignee.login if issue.assignee else None, issue.milestone.title if issue.milestone else None, new_labels, self.get_vote_count(issue))
                 comment = github.Comment()
                 comment.body = msg
                 logbook.info(u"Adding paper trail for %s (changes: %s): '%s'" % (issue, ", ".join(changes), msg))

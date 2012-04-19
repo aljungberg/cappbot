@@ -66,9 +66,9 @@ LABEL_EXPLANATIONS = {
     '#needs-unit-test':     'This issue needs a volunteer to write and submit one or more unit tests execercising the changes and/or the relevant parts of the original problem.',
     '#duplicate':           'This issue duplicates another existing issue. Refer to the original issue for further information.',
     '#fixed':               'This issue is considered successfully resolved.',
-    '#wont-fix':            'A Reviewer or core team member has decided against acting upon this issue.',
+    '#wont-fix':            'A reviewer or core team member has decided against acting upon this issue.',
     '#works-for-me':        'Attempts to reproduce the problem described by this issue has failed to reveal any erroneous situation.',
-    '#new':                 'A Reviewer should examine this issue.',
+    '#new':                 'A reviewer should examine this issue.',
     '#accepted':            'This issue has been confirmed but needs further review.',
 }
 
@@ -76,11 +76,11 @@ LABEL_EXPLANATIONS = {
 FINAL_WORD_LABELS = ('#fixed', '#duplicate', '#wont-fix', '#works-for-me')
 
 
-def getPaperTrailMessage(assignee, milestone, labels):
+def getPaperTrailMessage(assignee, milestone, labels, votes=None):
     """Produce the paper trail message.
 
     >>> getPaperTrailMessage(None, None, set(['#new',]))
-    "This issue is now unassigned, belongs to no milestone and has this label: #new. What's next? A Reviewer should examine this issue."
+    "This issue is now unassigned, belongs to no milestone and has this label: #new. What's next? A reviewer should examine this issue."
     >>> getPaperTrailMessage(None, '1.0', set(['feature', '#ready-to-commit',]))
     "This issue is now unassigned, belongs to milestone 1.0 and has these labels: #ready-to-commit, feature. What's next? The changes for this issue are ready to be committed by a member of the core team."
     >>> getPaperTrailMessage('aljungberg', None, set(['feature', '#ready-to-commit',]))
@@ -89,6 +89,8 @@ def getPaperTrailMessage(assignee, milestone, labels):
     "This issue is now unassigned, belongs to no milestone and has these labels: #acknowledged, #needs-patch, bug. What's next? \\n\\n * This issue needs a volunteer to write and submit code to address it."
     >>> getPaperTrailMessage(None, None, set(['bug', '#acknowledged', '#needs-patch',]))
     "This issue is now unassigned, belongs to no milestone and has these labels: #acknowledged, #needs-patch, bug. What's next? \\n\\n * This issue needs a volunteer to write and submit code to address it."
+    >>> getPaperTrailMessage(None, 'Someday', set(['#acknowledged', '#someday']), 3)
+    "This issue is now unassigned, belongs to milestone Someday, has 3 votes and has these labels: #acknowledged, #someday. What's next? A reviewer should examine this issue."
 
     """
 
@@ -101,6 +103,9 @@ def getPaperTrailMessage(assignee, milestone, labels):
         r += ''', belongs to milestone %s''' % milestone
     else:
         r += ''', belongs to no milestone'''
+
+    if votes is not None:
+        r += ''', has %d vote%s''' % (votes, 's' if votes != 1 else '')
 
     if not labels:
         r += ''' and has no labels.'''
@@ -127,4 +132,4 @@ def getWhatsNextMessage(assignee, milestone, labels):
     if needs:
         return '\n\n * %s' % ('\n * '.join(LABEL_EXPLANATIONS[label] for label in needs))
 
-    return "A Reviewer should examine this issue."
+    return "A reviewer should examine this issue."
