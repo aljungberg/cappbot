@@ -196,6 +196,11 @@ class CappBot(object):
 
             for line in comment.body.split('\n'):
                 line = line.strip()
+
+                # Votes look just like +<label> or -<label> where the label is the number 1 or 0.
+                if VOTE_REGEX.match(line):
+                    continue
+
                 m = ADD_LABEL_REGEX.match(line)
                 if m:
                     new_label = m.group(1) or m.group(2)
