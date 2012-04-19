@@ -67,6 +67,8 @@ REMOVE_LABEL_REGEX = re.compile(r'^-([-\w\d _#]*[-\w\d_#]+)$')
 
 VOTE_REGEX = re.compile(r'^[-\+][01]$')
 
+TITLE_VOTE_REGEX = re.compile(r' \[[-+]\d+\]$')
+
 
 def is_issue_new(issue):
     """Return True if an issue hasn't been manually configured before CappBot got to it."""
@@ -348,6 +350,22 @@ class CappBot(object):
             changes = changes.difference(set(['comments']))
             if did_change_votes:
                 changes.add('votes')
+
+                # Add the vote count to the issue title.
+                issue_title = issue.title
+                m = TITLE_VOTE_REGEX.search(issue_title)
+                if m:
+                    issue_title = issue_title[:-len(m.group(0))]
+                vote_count = self.get_vote_count(issue)
+                if vote_count:
+                    issue_title += ' [%+d]' % self.get_vote_count(issue)
+                    logbook.info(u"Recording vote in title of %s: '%s'" % (issue, issue_title))
+                elif m:
+                    logbook.info(u"Clearing vote from title of %s: '%s'" % (issue, issue_title))
+
+                if not self.dry_run:
+                    issue.patch(title=issue_title)
+
             if new_labels != original_labels:
                 changes.add('labels')
             if len(changes):
