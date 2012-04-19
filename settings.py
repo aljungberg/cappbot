@@ -52,3 +52,26 @@ WHEN_LABEL_REMOVE_LABELS = {
         '#ready-to-commit'
     ]
 }
+
+## Paper Trail ##
+
+
+def getPaperTrailMessage(assignee, milestone, labels):
+    if assignee:
+        r = '''This issue is now assigned to [%s](https://github.com/%s)''' % assignee
+    else:
+        r = '''This issue is now unassigned'''
+
+    if milestone:
+        r += ''', belongs to milestone %s''' % milestone
+    else:
+        r += ''', belongs to no milestone'''
+
+    if not labels:
+        r += ''' and has no labels.'''
+    elif len(labels) == 1:
+        r += ''' and has this label: %s.''' % ", ".join(labels)
+    else:
+        r += ''' and has these labels: %s.''' % ", ".join(labels)
+
+    return r

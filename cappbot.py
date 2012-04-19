@@ -108,7 +108,7 @@ class CappBot(object):
         # Note we need to use string keys for our JSON database's sake.
         key = unicode(issue.id)
         if key in db['issues']:
-            db['issues'][key].update(key, db_issue)
+            db['issues'][key].update(db_issue)
         else:
             db_issue['votes'] = None
             db_issue['latest_seen_comment_id'] = None
@@ -281,7 +281,24 @@ class CappBot(object):
             new_labels = self.altered_labels_per_removal_rules(issue, new_labels)
 
             if new_labels != original_labels and not self.dry_run:
-                    issue.patch(labels=list(new_labels))
+                issue.patch(labels=list(new_labels))
+
+            # Post paper trail.
+            changes = changes.difference(set(['comments']))
+            if new_labels != original_labels:
+                changes.add('labels')
+            if len(changes):
+                msg = settings.getPaperTrailMessage(issue.assignee.login if issue.assignee else None, issue.milestone.title if issue.milestone else None, new_labels)
+                comment = github.Comment()
+                comment.body = msg
+                logbook.info(u"Adding paper trail for %s (changes: %s): '%s'" % (issue, ", ".join(changes), msg))
+                if not self.dry_run:
+                    issue._comments.post(comment)
+                    self.record_latest_seen_comment(issue)
+
+            # Now record the latest labels etc so we don't react to these same changes the next time.
+            self.record_issue(issue)
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
