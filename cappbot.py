@@ -141,6 +141,9 @@ class CappBot(object):
         if issue.comments and (record['latest_seen_comment_id'] is None or record['latest_seen_comment_id'] != int(issue._comments[-1].id)):
             r.add('comments')
 
+        if issue._force_paper_trail:
+            r.add('new')
+
         return r
 
     def install_issue_defaults(self, issue):
@@ -269,6 +272,7 @@ class CappBot(object):
 
         for issue in issues:
             issue._should_ignore = False
+            issue._force_paper_trail = False
 
             # We'll need this now or later, or both.
             issue._comments = github.Comments.by_issue(issue)
@@ -291,6 +295,8 @@ class CappBot(object):
                 self.install_issue_defaults(issue)
             else:
                 logbook.info(u"Recording manually triaged issue %d." % issue.id)
+                # Even if the issue has been manually triaged, we still want to insert a paper trail starting now.
+                issue._force_paper_trail = True
 
             self.record_issue(issue)
 
