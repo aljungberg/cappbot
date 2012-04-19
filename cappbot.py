@@ -67,6 +67,7 @@ REMOVE_LABEL_REGEX = re.compile(r'^-([-\w\d _#]*[-\w\d_#]+)$')
 
 VOTE_REGEX = re.compile(r'^[-\+][01]$')
 
+
 def is_issue_new(issue):
     """Return True if an issue hasn't been manually configured before CappBot got to it."""
 
@@ -258,6 +259,11 @@ class CappBot(object):
         record = self.database['issues'][unicode(issue.id)]
         return record['votes']
 
+    def did_comment_on(self, issue):
+        """Return true if we've commented previously on this issue."""
+
+        return issue.comments > 0 and any(comment for comment in issue._comments if comment.user.login == self.current_user.login)
+
     def run(self):
         github = self.github
 
@@ -288,7 +294,7 @@ class CappBot(object):
 
             # Check for comments we've made to this issue previously. Any such comment would indicate
             # there's a problem since we believe !has_seen_issue(issue).
-            if issue.comments > 0 and any(comment for comment in issue._comments if comment.user.login == self.current_user.login):
+            if self.did_comment_on(issue):
                 logbook.warning(u"Déjà vu: it looks like CappBot has interacted with %s but it's not in the database. Ignoring the issue." % issue)
                 issue._should_ignore = True
                 continue
@@ -309,6 +315,11 @@ class CappBot(object):
         for issue in issues:
             if issue._should_ignore:
                 continue
+
+            if not self.did_comment_on(issue):
+                # This issue might not have been changed since we first saw it, but we've never commented
+                # on it so there's no paper trail yet.
+                issue._force_paper_trail = True
 
             changes = self.get_issue_changes(issue)
 
