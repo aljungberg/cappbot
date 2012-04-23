@@ -80,45 +80,41 @@ def getPaperTrailMessage(assignee, milestone, labels, votes=None):
     """Produce the paper trail message.
 
     >>> getPaperTrailMessage(None, None, set(['#new',]))
-    "This issue is now unassigned, belongs to no milestone and has this label: #new. What's next? A reviewer should examine this issue."
+    "**Label:** #new.  **What's next?** A reviewer should examine this issue."
     >>> getPaperTrailMessage(None, '1.0', set(['feature', '#ready-to-commit',]))
-    "This issue is now unassigned, belongs to milestone 1.0 and has these labels: #ready-to-commit, feature. What's next? The changes for this issue are ready to be committed by a member of the core team."
+    "**Milestone:** 1.0.  **Labels:** #ready-to-commit, feature.  **What's next?** The changes for this issue are ready to be committed by a member of the core team."
     >>> getPaperTrailMessage('aljungberg', None, set(['feature', '#ready-to-commit',]))
-    "This issue is now assigned to [aljungberg](https://github.com/aljungberg), belongs to no milestone and has these labels: #ready-to-commit, feature. What's next? The changes for this issue are ready to be committed by [aljungberg](https://github.com/aljungberg)."
+    "**Assignee:** [aljungberg](https://github.com/aljungberg).  **Labels:** #ready-to-commit, feature.  **What's next?** The changes for this issue are ready to be committed by [aljungberg](https://github.com/aljungberg)."
     >>> getPaperTrailMessage(None, None, set(['bug', '#acknowledged', '#needs-patch',]))
-    "This issue is now unassigned, belongs to no milestone and has these labels: #acknowledged, #needs-patch, bug. What's next? \\n\\n * This issue needs a volunteer to write and submit code to address it."
+    "**Labels:** #acknowledged, #needs-patch, bug.  **What's next?** \\n\\n * This issue needs a volunteer to write and submit code to address it."
     >>> getPaperTrailMessage(None, None, set(['bug', '#acknowledged', '#needs-patch',]))
-    "This issue is now unassigned, belongs to no milestone and has these labels: #acknowledged, #needs-patch, bug. What's next? \\n\\n * This issue needs a volunteer to write and submit code to address it."
+    "**Labels:** #acknowledged, #needs-patch, bug.  **What's next?** \\n\\n * This issue needs a volunteer to write and submit code to address it."
     >>> getPaperTrailMessage(None, 'Someday', set(['#acknowledged', '#someday']), 3)
-    "This issue is now unassigned, belongs to milestone Someday, has 3 votes and has these labels: #acknowledged, #someday. What's next? A reviewer should examine this issue."
+    "**Milestone:** Someday.  **Votes:** 3.  **Labels:** #acknowledged, #someday.  **What's next?** A reviewer should examine this issue."
 
     """
 
-    if assignee:
-        r = '''This issue is now assigned to [%s](https://github.com/%s)''' % (assignee, assignee)
-    else:
-        r = '''This issue is now unassigned'''
+    r = ""
 
+    if assignee:
+        r = "**Assignee:** %s.  " % ("[%s](https://github.com/%s)" % (assignee, assignee) if assignee else "-")
     if milestone:
-        r += ''', belongs to milestone %s''' % milestone
-    else:
-        r += ''', belongs to no milestone'''
+        r += "**Milestone:** %s.  " % (milestone or "-")
 
     if votes is not None:
-        r += ''', has %d vote%s''' % (votes, 's' if votes != 1 else '')
+        r += "**Vote%s:** %d.  " % ('s' if votes != 1 else '', votes)
 
-    if not labels:
-        r += ''' and has no labels.'''
-    elif len(labels) == 1:
-        r += ''' and has this label: %s.''' % ", ".join(labels)
-    else:
-        r += ''' and has these labels: %s.''' % ", ".join(sorted(labels))
+    if labels:
+        r += "**Label%s:** %s.  " % ('s' if len(labels) != 1 else '', ", ".join(sorted(labels)) if labels else "-")
 
     next = getWhatsNextMessage(assignee, milestone, labels)
     if next:
-        r += ''' What's next? %s''' % next
+        r += '''**What's next?** %s''' % next
 
-    return r
+    if not r:
+        r = 'This issue has not been labeled.'
+
+    return r.strip()
 
 
 def getWhatsNextMessage(assignee, milestone, labels):
