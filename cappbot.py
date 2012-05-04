@@ -278,9 +278,105 @@ class CappBot(object):
         for label in defs.get('labels', []):
             self.github.Labels.get_or_create_in_repository(self.repo_user, self.repo_name, label)
 
-    def run(self):
-        github = self.github
+    def check_prepare_issue(self, issue):
+        """Phase 1 issue work: record new issues, install issue defaults, mark déjà vu issues,
+        and retrieve the issue comments.
 
+        """
+
+        issue._should_ignore = False
+        issue._force_paper_trail = False
+
+        # We'll need this now or later, or both.
+        issue._comments = self.github.Comments.by_issue(issue)
+
+        if self.has_seen_issue(issue):
+            # It's not a new issue if we have recorded it previously.
+            return
+
+        # Check for comments we've made to this issue previously. Any such comment would indicate
+        # there's a problem since we believe !has_seen_issue(issue).
+        if self.did_comment_on(issue):
+            logbook.warning(u"Déjà vu: it looks like CappBot has interacted with %s but it's not in the database. Ignoring the issue." % issue)
+            issue._should_ignore = True
+            return
+
+        if is_issue_new(issue):
+            logbook.info(u"Issue %s is new." % issue)
+
+            # Assign default labels and milestone.
+            self.install_issue_defaults(issue)
+        else:
+            logbook.info(u"Recording manually triaged issue %d." % issue.id)
+            # Even if the issue has been manually triaged, we still want to insert a paper trail starting now.
+            issue._force_paper_trail = True
+
+        self.record_issue(issue)
+
+    def handle_issue_changes(self, issue):
+        if not self.did_comment_on(issue):
+            # This issue might not have been changed since we first saw it, but we've never commented
+            # on it so there's no paper trail yet.
+            issue._force_paper_trail = True
+
+        changes = self.get_issue_changes(issue)
+
+        if not changes:
+            return
+
+        original_labels = set(label.name for label in issue.labels)
+        new_labels = original_labels.copy()
+
+        did_change_votes = False
+        if 'comments' in changes:
+            # Check for action comments which change labels.
+            new_labels = self.altered_labels_by_interpreting_new_comments(issue, new_labels)
+            self.record_latest_seen_comment(issue)
+
+            # Count votes.
+            did_change_votes = self.recount_votes(issue)
+
+        # Remove labels superseded by new labels.
+        new_labels = self.altered_labels_per_removal_rules(issue, new_labels)
+
+        if new_labels != original_labels and not self.dry_run:
+            issue.patch(labels=list(new_labels))
+
+        # Post paper trail.
+        changes = changes.difference(set(['comments']))
+        if did_change_votes:
+            changes.add('votes')
+
+            # Add the vote count to the issue title.
+            issue_title = issue.title
+            m = TITLE_VOTE_REGEX.search(issue_title)
+            if m:
+                issue_title = issue_title[:-len(m.group(0))]
+            vote_count = self.get_vote_count(issue)
+            if vote_count:
+                issue_title += ' [%+d]' % self.get_vote_count(issue)
+                logbook.info(u"Recording vote in title of %s: '%s'" % (issue, issue_title))
+            elif m:
+                logbook.info(u"Clearing vote from title of %s: '%s'" % (issue, issue_title))
+
+            if not self.dry_run:
+                issue.patch(title=issue_title)
+
+        if new_labels != original_labels:
+            changes.add('labels')
+        if len(changes):
+            msg = settings.getPaperTrailMessage(issue.assignee.login if issue.assignee else None, issue.milestone.title if issue.milestone else None, new_labels, self.get_vote_count(issue))
+            comment = self.github.Comment()
+            comment.body = msg
+            logbook.info(u"Adding paper trail for %s (changes: %s): '%s'" % (issue, ", ".join(changes), msg))
+            if not self.dry_run:
+                issue._comments.post(comment)
+                self.record_latest_seen_comment(issue)
+
+        # Now record the latest labels etc so we don't react to these same changes the next time.
+        self.record_issue(issue)
+
+    def run(self):
         logbook.info("Logged in as %s." % self.current_user.login)
 
         self.ensure_referenced_labels_exist()
@@ -288,107 +384,20 @@ class CappBot(object):
         self.known_labels = set(label.name for label in self.github.Labels.by_repository(self.repo_user, self.repo_name))
 
         # Find all issues.
-        issues = github.Issues.by_repository(self.repo_user, self.repo_name)
+        issues = self.github.Issues.by_repository(self.repo_user, self.repo_name)
 
         logbook.info("Found %d issue(s)." % len(issues))
 
+        # Phase 1: check, prepare and record issues.
         for issue in issues:
-            issue._should_ignore = False
-            issue._force_paper_trail = False
+            self.check_prepare_issue(issue)
 
-            # We'll need this now or later, or both.
-            issue._comments = github.Comments.by_issue(issue)
-
-            if self.has_seen_issue(issue):
-                # It's not a new issue if we have recorded it previously.
-                continue
-
-            # Check for comments we've made to this issue previously. Any such comment would indicate
-            # there's a problem since we believe !has_seen_issue(issue).
-            if self.did_comment_on(issue):
-                logbook.warning(u"Déjà vu: it looks like CappBot has interacted with %s but it's not in the database. Ignoring the issue." % issue)
-                issue._should_ignore = True
-                continue
-
-            if is_issue_new(issue):
-                logbook.info(u"Issue %s is new." % issue)
-
-                # Assign default labels and milestone.
-                self.install_issue_defaults(issue)
-            else:
-                logbook.info(u"Recording manually triaged issue %d." % issue.id)
-                # Even if the issue has been manually triaged, we still want to insert a paper trail starting now.
-                issue._force_paper_trail = True
-
-            self.record_issue(issue)
-
-        # Check changed issues.
+        # Phase 2: react to changed issues.
         for issue in issues:
             if issue._should_ignore:
                 continue
 
-            if not self.did_comment_on(issue):
-                # This issue might not have been changed since we first saw it, but we've never commented
-                # on it so there's no paper trail yet.
-                issue._force_paper_trail = True
-
-            changes = self.get_issue_changes(issue)
-
-            if not changes:
-                continue
-
-            original_labels = set(label.name for label in issue.labels)
-            new_labels = original_labels.copy()
-
-            did_change_votes = False
-            if 'comments' in changes:
-                # Check for action comments which change labels.
-                new_labels = self.altered_labels_by_interpreting_new_comments(issue, new_labels)
-                self.record_latest_seen_comment(issue)
-
-                # Count votes.
-                did_change_votes = self.recount_votes(issue)
-
-            # Remove labels superseded by new labels.
-            new_labels = self.altered_labels_per_removal_rules(issue, new_labels)
-
-            if new_labels != original_labels and not self.dry_run:
-                issue.patch(labels=list(new_labels))
-
-            # Post paper trail.
-            changes = changes.difference(set(['comments']))
-            if did_change_votes:
-                changes.add('votes')
-
-                # Add the vote count to the issue title.
-                issue_title = issue.title
-                m = TITLE_VOTE_REGEX.search(issue_title)
-                if m:
-                    issue_title = issue_title[:-len(m.group(0))]
-                vote_count = self.get_vote_count(issue)
-                if vote_count:
-                    issue_title += ' [%+d]' % self.get_vote_count(issue)
-                    logbook.info(u"Recording vote in title of %s: '%s'" % (issue, issue_title))
-                elif m:
-                    logbook.info(u"Clearing vote from title of %s: '%s'" % (issue, issue_title))
-
-                if not self.dry_run:
-                    issue.patch(title=issue_title)
-
-            if new_labels != original_labels:
-                changes.add('labels')
-            if len(changes):
-                msg = settings.getPaperTrailMessage(issue.assignee.login if issue.assignee else None, issue.milestone.title if issue.milestone else None, new_labels, self.get_vote_count(issue))
-                comment = github.Comment()
-                comment.body = msg
-                logbook.info(u"Adding paper trail for %s (changes: %s): '%s'" % (issue, ", ".join(changes), msg))
-                if not self.dry_run:
-                    issue._comments.post(comment)
-                    self.record_latest_seen_comment(issue)
-
-            # Now record the latest labels etc so we don't react to these same changes the next time.
-            self.record_issue(issue)
-
+            self.handle_issue_changes(issue)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
