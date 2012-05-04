@@ -4,7 +4,7 @@
 #
 # BSD License
 #
-# Copyright (c) 2011, Alexander Ljungberg
+# Copyright (c) 2011-12, Alexander Ljungberg
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -80,10 +80,15 @@ class CappBot(object):
     def __init__(self, settings, database, dry_run=False):
         self.settings = settings
         self.github = GitHub(api_token=settings.GITHUB_TOKEN)
-        self.current_user = self.github.current_user()
         self.repo_user, self.repo_name = settings.GITHUB_REPOSITORY.split("/")
         self.database = database
         self.dry_run = dry_run
+
+    def get_current_user(self):
+        if not getattr(self, '_current_user', None):
+            self._current_user = self.github.current_user()
+        return self._current_user
+    current_user = property(get_current_user)
 
     def has_seen_issue(self, issue):
         """Return true if the issue is in our database."""
@@ -266,15 +271,19 @@ class CappBot(object):
 
         return issue.comments > 0 and any(comment for comment in issue._comments if comment.user.login == self.current_user.login)
 
+    def ensure_referenced_labels_exist(self):
+        """Ensure all labels we might use exist."""
+
+        defs = self.settings.NEW_ISSUE_DEFAULTS
+        for label in defs.get('labels', []):
+            self.github.Labels.get_or_create_in_repository(self.repo_user, self.repo_name, label)
+
     def run(self):
         github = self.github
 
         logbook.info("Logged in as %s." % self.current_user.login)
 
-        # Ensure all labels exist.
-        defs = self.settings.NEW_ISSUE_DEFAULTS
-        for label in defs.get('labels', []):
-            self.github.Labels.get_or_create_in_repository(self.repo_user, self.repo_name, label)
+        self.ensure_referenced_labels_exist()
 
         self.known_labels = set(label.name for label in self.github.Labels.by_repository(self.repo_user, self.repo_name))
 
