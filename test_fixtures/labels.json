@@ -1,0 +1,16 @@
+[
+      {"color": "fc2929", "url": "https://api.github.com/repos/cappuccino/cappuccino/labels/bug", "name": "bug"},
+      {"color": "cccccc", "url": "https://api.github.com/repos/cappuccino/cappuccino/labels/duplicate", "name": "duplicate"},
+      {"color": "84b6eb", "url": "https://api.github.com/repos/cappuccino/cappuccino/labels/enhancement", "name": "enhancement"},
+      {"color": "e6e6e6", "url": "https://api.github.com/repos/cappuccino/cappuccino/labels/invalid", "name": "invalid"},
+      {"color": "cc317c", "url": "https://api.github.com/repos/cappuccino/cappuccino/labels/question", "name": "question"},
+      {"color": "ffffff", "url": "https://api.github.com/repos/cappuccino/cappuccino/labels/wontfix", "name": "wontfix"},
+      {"color": "ededed", "url": "https://api.github.com/repos/cappuccino/cappuccino/labels/%23new", "name": "#new"},
+      {"color": "ededed", "url": "https://api.github.com/repos/cappuccino/cappuccino/labels/%23needs-test", "name": "#needs-test"},
+      {"color": "ededed", "url": "https://api.github.com/repos/cappuccino/cappuccino/labels/%23needs-patch", "name": "#needs-patch"},
+      {"color": "ededed", "url": "https://api.github.com/repos/cappuccino/cappuccino/labels/%23needs-docs", "name": "#needs-docs"},
+      {"color": "ededed", "url": "https://api.github.com/repos/cappuccino/cappuccino/labels/%23accepted", "name": "#accepted"},
+      {"color": "ededed", "url": "https://api.github.com/repos/cappuccino/cappuccino/labels/%23needs-confirmation", "name": "#needs-confirmation"},
+      {"color": "ededed", "url": "https://api.github.com/repos/cappuccino/cappuccino/labels/%23needs-info", "name": "#needs-info"},
+      {"color": "ededed", "url": "https://api.github.com/repos/cappuccino/cappuccino/labels/%23acknowledged", "name": "#acknowledged"}
+]
