@@ -19,12 +19,14 @@
 
 """
 
+from link_header import parse_link_value
 from urllib import quote_plus
 from urlparse import urljoin
-from link_header import parse_link_value
 import argparse
-import json
 import httplib2
+import json
+import urllib
+import urlparse
 
 
 from remoteobjects import RemoteObject, fields, ListObject
@@ -89,6 +91,47 @@ class GitHubRemoteListObject(ListObject, GitHubRemoteObject):
                         self._next_page_url = url
                     elif attrs['rel'] == 'last':
                         self._last_page_url = url
+
+        return r
+
+    @classmethod
+    def get(cls, url, **kwargs):
+        per_page = 30
+        if 'per_page' in kwargs:
+            per_page = kwargs['per_page']
+            del kwargs['per_page']
+
+        all_pages = False
+        if 'all_pages' in kwargs:
+            all_pages = kwargs['all_pages']
+            del kwargs['all_pages']
+
+        r = None
+        while url:
+            url_parts = list(urlparse.urlparse(url))
+            query = dict(urlparse.parse_qsl(url_parts[4]))
+
+            if per_page != 30:
+                query['per_page'] = per_page
+
+            url_parts[4] = urllib.urlencode(query)
+            url = urlparse.urlunparse(url_parts)
+
+            new_r = super(ListObject, cls).get(url, **kwargs)
+
+            if not all_pages:
+                return new_r
+
+            # Don't lazy evaluate, we need the next page URL right away.
+            new_r.deliver()
+
+            if not r:
+                r = new_r
+            else:
+                # Append these results to the existing ones when fetching all pages.
+                r.entries.extend(new_r.entries)
+
+            url = new_r._next_page_url
 
         return r
 
@@ -182,7 +225,7 @@ class Labels(GitHubRemoteListObject):
         return self.entries.__getitem__(key)
 
     @classmethod
-    def by_repository(cls, user_name, repo_name, http=None, **kwargs):
+    def by_repository(cls, user_name, repo_name, **kwargs):
         """Get labels by repository.
 
         `GET /repos/:user/:repo/labels`
@@ -190,11 +233,11 @@ class Labels(GitHubRemoteListObject):
         """
 
         url = '/repos/%s/%s/labels' % (user_name, repo_name)
-        return cls.get(urljoin(GitHub.endpoint, url), http=http)
+        return cls.get(urljoin(GitHub.endpoint, url), **kwargs)
 
     @classmethod
-    def get_or_create_in_repository(cls, user_name, repo_name, label_name, http=None):
-        labels = cls.by_repository(user_name, repo_name)
+    def get_or_create_in_repository(cls, user_name, repo_name, label_name):
+        labels = cls.by_repository(user_name, repo_name, per_page=100, all_pages=True)
         for label in labels:
             if label.name == label_name:
                 return label
@@ -254,7 +297,7 @@ class Milestones(GitHubRemoteListObject):
         return self.entries.__getitem__(key)
 
     @classmethod
-    def by_repository(cls, user_name, repo_name, http=None, **kwargs):
+    def by_repository(cls, user_name, repo_name, **kwargs):
         """Get milestones by repository.
 
         `GET /repos/:user/:repo/milestones`
@@ -262,11 +305,11 @@ class Milestones(GitHubRemoteListObject):
         """
 
         url = '/repos/%s/%s/milestones' % (user_name, repo_name)
-        return cls.get(urljoin(GitHub.endpoint, url), http=http)
+        return cls.get(urljoin(GitHub.endpoint, url), **kwargs)
 
     @classmethod
-    def get_or_create_in_repository(cls, user_name, repo_name, milestone_title, http=None):
-        milestones = cls.by_repository(user_name, repo_name)
+    def get_or_create_in_repository(cls, user_name, repo_name, milestone_title):
+        milestones = cls.by_repository(user_name, repo_name, per_page=100, all_pages=True)
         for milestone in milestones:
             if milestone.title == milestone_title:
                 return milestone
@@ -317,7 +360,7 @@ class Comments(GitHubRemoteListObject):
         return self.entries.__getitem__(key)
 
     @classmethod
-    def by_issue(cls, issue, http=None, **kwargs):
+    def by_issue(cls, issue, **kwargs):
         """Get comments by issue.
 
         `GET /repos/:user/:repo/issues/:number/comments`
@@ -325,7 +368,7 @@ class Comments(GitHubRemoteListObject):
         """
 
         url = '%s/comments' % issue.url
-        return cls.get(url, http=http)
+        return cls.get(url, **kwargs)
 
 
 class Event(GitHubRemoteObject):
@@ -383,7 +426,7 @@ class Events(GitHubRemoteListObject):
         return self.entries.__getitem__(key)
 
     @classmethod
-    def by_repository(cls, repo_user, repo_name, http=None, **kwargs):
+    def by_repository(cls, repo_user, repo_name, **kwargs):
         """Get events by repository.
 
         `GET /repos/:user/:repo/events`
@@ -391,7 +434,7 @@ class Events(GitHubRemoteListObject):
         """
 
         url = '/repos/%s/%s/events' % (repo_user, repo_name)
-        return cls.get(urljoin(GitHub.endpoint, url), http=http)
+        return cls.get(urljoin(GitHub.endpoint, url), **kwargs)
 
 
 class Issue(GitHubRemoteObject):
@@ -483,22 +526,22 @@ class Issues(GitHubRemoteListObject):
     entries = fields.List(fields.Object(Issue))
 
     @classmethod
-    def by_repository(cls, user_name, repo_name, state='open', per_page=30, http=None, **kwargs):
+    def by_repository(cls, user_name, repo_name, state='open', **kwargs):
         """Get issues by repository.
 
         `GET /repos/:user/:repo/issues`
 
         """
 
-        url = '/repos/%s/%s/issues?state=%s&per_page=%d' % (user_name, repo_name, state, per_page)
-        return cls.get(urljoin(GitHub.endpoint, url), http=http)
+        url = '/repos/%s/%s/issues?state=%s' % (user_name, repo_name, state)
+        return cls.get(urljoin(GitHub.endpoint, url), **kwargs)
 
     @classmethod
-    def by_repository_all(cls, user_name, repo_name, per_page=30, http=None):
+    def by_repository_all(cls, user_name, repo_name, **kwargs):
         """Get all issues by repository (open and closed)."""
 
-        open_issues = cls.by_repository(user_name, repo_name, state='open', per_page=per_page, http=http)
-        closed_issues = cls.by_repository(user_name, repo_name, state='closed', per_page=per_page, http=http)
+        open_issues = cls.by_repository(user_name, repo_name, state='open', **kwargs)
+        closed_issues = cls.by_repository(user_name, repo_name, state='closed', **kwargs)
 
         open_issues.entries.extend(closed_issues.entries)
         return open_issues
@@ -536,7 +579,7 @@ class Collaborators(GitHubRemoteListObject):
     entries = fields.List(fields.Object(Collaborator))
 
     @classmethod
-    def by_repository(cls, user_name, repo_name, http=None, **kwargs):
+    def by_repository(cls, user_name, repo_name, **kwargs):
         """Get collaborators by repository.
 
         `GET /repos/:user/:repo/collaborators`
@@ -544,7 +587,7 @@ class Collaborators(GitHubRemoteListObject):
         """
 
         url = '/repos/%s/%s/collaborators' % (user_name, repo_name)
-        return cls.get(urljoin(GitHub.endpoint, url), http=http)
+        return cls.get(urljoin(GitHub.endpoint, url), **kwargs)
 
 
 class GitHub(object):
