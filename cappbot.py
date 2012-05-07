@@ -167,7 +167,7 @@ class CappBot(object):
             patch['milestone'] = milestone.number
 
         if defs.get('labels') is not None:
-            patch['labels'] = defs['labels']
+            patch['labels'] = map(unicode, defs['labels'])
 
         if defs.get('assignee') is not None:
             patch['assignee'] = defs['assignee']
@@ -340,7 +340,7 @@ class CappBot(object):
         new_labels = self.altered_labels_per_removal_rules(issue, new_labels)
 
         if new_labels != original_labels and not self.dry_run:
-            issue.patch(labels=list(new_labels))
+            issue.patch(labels=map(unicode, new_labels))
 
         # Post paper trail.
         changes = changes.difference(set(['comments']))
