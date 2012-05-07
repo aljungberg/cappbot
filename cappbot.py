@@ -436,6 +436,12 @@ class CappBot(object):
         if new_labels != original_labels:
             changes.add('labels')
         if len(changes):
+            # If we're going to reopen the issue, do that before leaving the paper trail.
+            if self.should_open_issue and issue.state != 'open':
+                logbook.info(u'Reopening %s due to label %s being removed' % (issue, self.should_open_issue))
+                if not self.dry_run:
+                    issue.patch(state="open")
+
             msg = self.settings.getPaperTrailMessage(issue.assignee.login if issue.assignee else None, issue.milestone.title if issue.milestone else None, new_labels, self.get_vote_count(issue))
             comment = self.github.Comment()
             comment.body = msg
@@ -444,15 +450,11 @@ class CappBot(object):
                 issue._comments.post(comment)
                 self.record_latest_seen_comment(issue)
 
-            # Close or open the issue last - it looks more natural after the paper trail.
+            # Close the issue after leaving the paper trail. It looks more natural.
             if self.should_close_issue and issue.state != 'closed':
                 logbook.info(u'Closing %s due to label %s being added' % (issue, self.should_close_issue))
                 if not self.dry_run:
                     issue.patch(state="closed")
-            elif self.should_open_issue and issue.state != 'open':
-                logbook.info(u'Reopening %s due to label %s being removed' % (issue, self.should_open_issue))
-                if not self.dry_run:
-                    issue.patch(state="open")
 
         # Now record the latest labels etc so we don't react to these same changes the next time.
         self.record_issue(issue)
