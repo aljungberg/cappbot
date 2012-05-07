@@ -27,6 +27,7 @@ Perform various automation and paper trail functionality on GitHub issues to aug
      * Detect special syntax in comments to add or remove labels. For example, `+#needs-test` on a line by itself adds the `#needs-test` label, while `-AppKit` would remove the `AppKit` label.
      * Remove labels automatically. If an issue receives the label `#accepted`, CappBot would remove `#needs-test` for instance.
      * All of the above features greatly assist when working with Pull requests because labels are usually not visible nor changeable from within a Pull request on github.com.
+     * Individuals can be given permission to add or remove labels through the above mechanism without being repository contributors.
      * Track voting: if a user writes +1 or -1 on a line by itself, CappBot records that user's vote and writes the tally of votes in the issue title. E.g. `Reduce load time [+3]`.
 
 """
@@ -52,6 +53,8 @@ Perform various automation and paper trail functionality on GitHub issues to aug
 #
 # For determining what is 'new' and what is old, keep a small local database recording the newest change we've
 # processed.
+#
+# We also need to check user permissions so that not just anyone can change issues.
 
 import argparse
 import imp
@@ -195,12 +198,19 @@ class CappBot(object):
         return []
 
     def send_message(self, user, subject, body):
+        # TODO
+        return
+
         if not user.email:
             logbook.info("No email address found. Unable to send to %s: %s" % (user.login, body))
+            return
         logbook.info("Sending message to %s (%s): %s" % (user.login, user.email, body))
         if not self.dry_run:
             # TODO
             pass
+
+    def user_may_alter_labels(self, user):
+        return 'labels' in self.settings.PERMISSIONS.get(user.login, ())
 
     def altered_labels_by_interpreting_new_comments(self, issue, labels):
         new_comments = self.get_new_comments(issue)
@@ -222,18 +232,26 @@ class CappBot(object):
                     new_label = m.group(1) or m.group(2)
                     if new_label in self.known_labels:
                         if not new_label in labels:
-                            logbook.info("Adding label %s due to comment %s by %s" % (new_label, comment.id, comment.user.login))
-                            labels.add(new_label)
+                            if not self.user_may_alter_labels(comment.user):
+                                logbook.warning(u"Ignoring unathorised attempt to alter labels by %s through comment %s." % (comment.user.login, comment.url))
+                                self.send_message(comment.user, u'Unable to alter label', u'(Your comment)[%s] appears to request that the label `%s` is added to the issue but you do not have the required authorisation.' % (comment.url, new_label))
+                            else:
+                                logbook.info("Adding label %s due to comment %s by %s" % (new_label, comment.url, comment.user.login))
+                                labels.add(new_label)
                     else:
-                        logbook.info(u'Ignoring unknown label %s in comment %s by %s.' % (new_label, comment.id, comment.user.login))
+                        logbook.info(u'Ignoring unknown label %s in comment %s by %s.' % (new_label, comment.url, comment.user.login))
                         self.send_message(comment.user, u'Unknown label', u'(Your comment)[%s] appears to request that the label `%s` is added to the issue but this does not seems to be a valid label.' % (comment.url, new_label))
                 m = REMOVE_LABEL_REGEX.match(line)
                 if m:
                     remove_label = m.group(1)
                     if remove_label in self.known_labels:
                         if remove_label in labels:
-                            logbook.info("Removing label %s due to comment %s by %s" % (remove_label, comment.id, comment.user.login))
-                            labels.remove(remove_label)
+                            if not self.user_may_alter_labels(comment.user):
+                                logbook.warning(u"Ignoring unathorised attempt to alter labels by %s through comment %s." % (comment.user.login, comment.url))
+                                self.send_message(comment.user, u'Unable to alter label', u'(Your comment)[%s] appears to request that the label `%s` is removed from the issue but you do not have the required authorisation.' % (comment.url, new_label))
+                            else:
+                                logbook.info("Removing label %s due to comment %s by %s" % (remove_label, comment.id, comment.user.login))
+                                labels.remove(remove_label)
                     else:
                         logbook.info(u'Ignoring unknown label %s in comment %s by %s.' % (new_label, comment.id, comment.user.login))
                         self.send_message(comment.user, u'Unknown label', u'(Your comment)[%s] appears to request that the label `%s` is removed from the issue but this does not seems to be a valid label.' % (comment.url, new_label))
@@ -399,6 +417,11 @@ class CappBot(object):
         self.ensure_referenced_labels_exist()
 
         self.known_labels = set(label.name for label in self.github.Labels.by_repository(self.repo_user, self.repo_name))
+
+        # Everyone who's a collborator automatically has permissions to do everything.
+        self.collaborator_logins = set(c.login for c in self.github.Collaborators.by_repository(self.repo_user, self.repo_name))
+        for login in self.collaborator_logins:
+            self.settings.PERMISSIONS[login] = ['labels', 'assignee', 'milestone']
 
         # Find all issues.
         issues = self.github.Issues.by_repository(self.repo_user, self.repo_name)

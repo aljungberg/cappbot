@@ -45,6 +45,7 @@ class TestSequenceFunctions(unittest.TestCase):
 
         self.settings = imp.load_source('settings', 'settings.py')
         self.settings.GITHUB_REPOSITORY = "alice_tester/blox"
+        self.settings.PERMISSIONS['bob'] = ['labels']
         self.database = {}
         self.cappbot = CappBot(self.settings, self.database)
         # Replace the GitHub API with a mock.
@@ -99,7 +100,9 @@ class TestSequenceFunctions(unittest.TestCase):
         issues = mini_github3.Issues.from_dict(issues)
         labels = mini_github3.Labels.from_dict(labels)
         milestones = mini_github3.Milestones.from_dict(milestones)
+        collaborators = mini_github3.Collaborators.from_dict([{'login': login} for login in (self.cappbot_user.login, self.alice_user.login)])
 
+        self.cappbot.github.Collaborators.by_repository = Mock(return_value=collaborators)
         self.cappbot.github.Labels.by_repository = Mock(return_value=labels)
 
         def install_issue_mock_patch(issue):
@@ -206,3 +209,16 @@ class TestSequenceFunctions(unittest.TestCase):
 
         issues[0].patch.assert_has_calls([call(labels=[u'#new'], milestone=2), call(labels=[u'#needs-test', u'#new'])])
         self.assertEquals(issues[0]._mock_comments[-1].body, "**Milestone:** Someday.  **Labels:** #needs-test, #new.  **What's next?** A reviewer should examine this issue.")
+
+    def test_action_by_comment_unauthorised(self):
+        issues, labels, milestones = self.configure_github_mock(load_fixture('issues.json')[6:7], load_fixture('labels.json'), [load_fixture('milestone.json')], [[self.fake_comment(self.chuck_user, 'I am Chuck and I accept this issue.\n\n+#accepted')]])
+
+        self.cappbot.send_message = Mock()
+        self.cappbot.run()
+
+        self.assertTrue(any(u'Ignoring unathorised attempt to alter labels by chuck' in record for record in self.log_handler.formatted_records))
+
+        self.cappbot.send_message.assert_has_calls([])
+
+        issues[0].patch.assert_has_calls([])
+        self.assertEquals(issues[0]._mock_comments[-1].body, u"**Labels:** enhancement, question.  **What's next?** A reviewer should examine this issue.")

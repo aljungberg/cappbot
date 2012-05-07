@@ -53,6 +53,12 @@ WHEN_LABEL_REMOVE_LABELS = {
     ]
 }
 
+# A list of users with permissions to change issues using comment syntax even
+# if they are not repository collaborators.
+PERMISSIONS = {
+    # 'aljungberg': ['labels', 'assignee', 'milestone']
+}
+
 ## Messages and Paper Trail ##
 
 LABEL_EXPLANATIONS = {

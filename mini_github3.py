@@ -468,6 +468,49 @@ class Issues(ListObject):
         return cls.get(urljoin(GitHub.endpoint, url), http=http)
 
 
+class Collaborator(GitHubRemoteObject):
+    """A GitHub repo collaborator.
+
+    Not sure if this could just as well be considered a User but it seems
+    to have only a subset of the fields.
+
+    `GET /repos/:user/:repo/collaborators/:user`
+
+    {
+      "login": "octocat",
+      "id": 1,
+      "avatar_url": "https://github.com/images/error/octocat_happy.gif",
+      "gravatar_id": "somehexcode",
+      "url": "https://api.github.com/users/octocat"
+    }
+
+    """
+
+    id = fields.Field()
+    avatar_url = fields.Field()
+    gravatar_id = fields.Field()
+    url = fields.Field()
+    login = fields.Field()
+
+    def __unicode__(self):
+        return u"<Collaborator %s>" % self.id
+
+
+class Collaborators(ListObject):
+    entries = fields.List(fields.Object(Collaborator))
+
+    @classmethod
+    def by_repository(cls, user_name, repo_name, http=None, **kwargs):
+        """Get collaborators by repository.
+
+        `GET /repos/:user/:repo/collaborators`
+
+        """
+
+        url = '/repos/%s/%s/collaborators' % (user_name, repo_name)
+        return cls.get(urljoin(GitHub.endpoint, url), http=http)
+
+
 class GitHub(object):
     """An interface to the GitHub API.
 
@@ -493,6 +536,8 @@ class GitHub(object):
         self.Milestones = Milestones
         self.Comment = Comment
         self.Comments = Comments
+        self.Collaborator = Collaborator
+        self.Collaborators = Collaborators
 
     def current_user(self, **kwargs):
         return User.get_user(**kwargs)
