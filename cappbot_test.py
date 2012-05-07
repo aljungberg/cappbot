@@ -44,7 +44,7 @@ class TestSequenceFunctions(unittest.TestCase):
         self.log_handler.push_thread()
 
         self.settings = imp.load_source('settings', 'settings.py')
-        self.settings.GITHUB_REPOSITORY = "alice/blox"
+        self.settings.GITHUB_REPOSITORY = "alice_tester/blox"
         self.database = {}
         self.cappbot = CappBot(self.settings, self.database)
         # Replace the GitHub API with a mock.
@@ -57,7 +57,7 @@ class TestSequenceFunctions(unittest.TestCase):
         user_template = user_template.copy()
         user_template['name'] = 'Alice Tester'
         user_template['url'] = 'https://api.github.com/users/alice_tester'
-        user_template['login'] = 'alice'
+        user_template['login'] = 'alice_tester'
         self.alice_user = mini_github3.User.from_dict(user_template)
 
         user_template = user_template.copy()
@@ -79,7 +79,7 @@ class TestSequenceFunctions(unittest.TestCase):
 
     def test_ensure_referenced_labels_exist(self):
         self.cappbot.ensure_referenced_labels_exist()
-        self.cappbot.github.Labels.get_or_create_in_repository.assert_called_with("alice", "blox", "#new")
+        self.cappbot.github.Labels.get_or_create_in_repository.assert_called_with("alice_tester", "blox", "#new")
 
     def test_current_user(self):
         current_user = self.cappbot.current_user
@@ -173,7 +173,7 @@ class TestSequenceFunctions(unittest.TestCase):
         number = getattr(self, 'fake_comment_number', 5207158) + 1
         self.fake_comment_number = number
         # Date doesn't increase with new comments which maybe isn't entirel realistic.
-        return {'body': body, 'url': 'https://api.github.com/repos/cappuccino/cappuccino/issues/comments/%d' % number, 'created_at': '2012-04-18T19:54:40Z', 'updated_at': '2012-04-18T19:54:40Z', 'user': owner.to_dict(), 'id': number}
+        return {'body': body, 'url': 'https://api.github.com/repos/alice_tester/blox/issues/comments/%d' % number, 'created_at': '2012-04-18T19:54:40Z', 'updated_at': '2012-04-18T19:54:40Z', 'user': owner.to_dict(), 'id': number}
 
     def test_ignore_deja_vu(self):
         cappbot_comment = [self.fake_comment(self.cappbot_user, 'Hello.')]
