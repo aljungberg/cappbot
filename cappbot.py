@@ -66,6 +66,7 @@ import json
 import logbook
 import os
 import re
+import sys
 
 from mini_github3 import GitHub
 
@@ -512,6 +513,10 @@ if __name__ == '__main__':
         help='Settings file to use')
     parser.add_argument('-n', '--dry-run', action='store_true', default=False, dest='dry_run',
         help='Only pretend to make changes')
+    parser.add_argument('--log', metavar='LOGFILE', type=argparse.FileType('w'), default=sys.stderr,
+        help='file to log to (default: stderr)')
+    parser.add_argument('-v', '--verbose', action='append_const', const=True,
+        help='use verbose logging, use twice for debug logging')
 
     args = parser.parse_args()
 
@@ -523,9 +528,14 @@ if __name__ == '__main__':
     else:
         database = {}
 
-    try:
-        CappBot(settings, database, dry_run=args.dry_run).run()
-    finally:
-        if not args.dry_run:
-            with open(settings.DATABASE, 'wb') as f:
-                json.dump(database, f, indent=2)
+    log_level = (logbook.WARNING, logbook.INFO, logbook.DEBUG)[min(2, len(args.verbose or []))]
+    null_handler = logbook.NullHandler()
+    with null_handler.applicationbound():
+        with logbook.StreamHandler(args.log, level=log_level, bubble=False) as log_handler:
+            with log_handler.applicationbound():
+                try:
+                    CappBot(settings, database, dry_run=args.dry_run).run()
+                finally:
+                    if not args.dry_run:
+                        with open(settings.DATABASE, 'wb') as f:
+                            json.dump(database, f, indent=2)
