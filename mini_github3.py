@@ -21,6 +21,7 @@
 
 from urllib import quote_plus
 from urlparse import urljoin
+from link_header import parse_link_value
 import argparse
 import json
 import httplib2
@@ -65,6 +66,31 @@ class GitHubRemoteObject(RemoteObject):
         # print body, response, content
 
         self.update_from_response(location, response, content)
+
+
+class GitHubRemoteListObject(ListObject, GitHubRemoteObject):
+    def update_from_response(self, url, response, content):
+        r = super(GitHubRemoteObject, self).update_from_response(url, response, content)
+
+        # GitHub sends paging information as a response header like this:
+        # <https://api.github.com/repos/cappuccino/cappuccino/issues?page=2&state=open>; rel="next", <https://api.github.com/repos/cappuccino/cappuccino/issues?page=11&state=open>; rel="last"
+        #
+        # <https://api.github.com/repos/cappuccino/cappuccino/issues?page=2&state=closed>; rel="next", <https://api.github.com/repos/cappuccino/cappuccino/issues?page=51&state=closed>; rel="last"
+
+        links = response.get('link')
+
+        self._next_page_url = None
+        self._last_page_url = None
+        if links:
+            links = [parse_link_value(link) for link in links.split(',')]
+            for link in links:
+                for url, attrs in link.items():
+                    if attrs['rel'] == 'next':
+                        self._next_page_url = url
+                    elif attrs['rel'] == 'last':
+                        self._last_page_url = url
+
+        return r
 
 
 class User(GitHubRemoteObject):
@@ -149,7 +175,7 @@ class Label(GitHubRemoteObject):
         return u"<Label %s>" % self.name
 
 
-class Labels(ListObject):
+class Labels(GitHubRemoteListObject):
     entries = fields.List(fields.Object(Label))
 
     def __getitem__(self, key):
@@ -221,7 +247,7 @@ class Milestone(GitHubRemoteObject):
         return u"<Milestone %s>" % self.title
 
 
-class Milestones(ListObject):
+class Milestones(GitHubRemoteListObject):
     entries = fields.List(fields.Object(Milestone))
 
     def __getitem__(self, key):
@@ -284,7 +310,7 @@ class Comment(GitHubRemoteObject):
         return u"<Comment %s>" % self.id
 
 
-class Comments(ListObject):
+class Comments(GitHubRemoteListObject):
     entries = fields.List(fields.Object(Comment))
 
     def __getitem__(self, key):
@@ -350,7 +376,7 @@ class Event(GitHubRemoteObject):
         return u"<Event %s>" % self.id
 
 
-class Events(ListObject):
+class Events(GitHubRemoteListObject):
     entries = fields.List(fields.Object(Event))
 
     def __getitem__(self, key):
@@ -453,26 +479,26 @@ class Issue(GitHubRemoteObject):
         return u"<Issue %d>" % self.number
 
 
-class Issues(ListObject):
+class Issues(GitHubRemoteListObject):
     entries = fields.List(fields.Object(Issue))
 
     @classmethod
-    def by_repository(cls, user_name, repo_name, http=None, state='open', **kwargs):
+    def by_repository(cls, user_name, repo_name, state='open', per_page=30, http=None, **kwargs):
         """Get issues by repository.
 
         `GET /repos/:user/:repo/issues`
 
         """
 
-        url = '/repos/%s/%s/issues?state=%s' % (user_name, repo_name, state)
+        url = '/repos/%s/%s/issues?state=%s&per_page=%d' % (user_name, repo_name, state, per_page)
         return cls.get(urljoin(GitHub.endpoint, url), http=http)
 
     @classmethod
-    def by_repository_all(cls, user_name, repo_name, http=None):
+    def by_repository_all(cls, user_name, repo_name, per_page=30, http=None):
         """Get all issues by repository (open and closed)."""
 
-        open_issues = cls.by_repository(user_name, repo_name, http=http, state='open')
-        closed_issues = cls.by_repository(user_name, repo_name, http=http, state='closed')
+        open_issues = cls.by_repository(user_name, repo_name, state='open', per_page=per_page, http=http)
+        closed_issues = cls.by_repository(user_name, repo_name, state='closed', per_page=per_page, http=http)
 
         open_issues.entries.extend(closed_issues.entries)
         return open_issues
@@ -506,7 +532,7 @@ class Collaborator(GitHubRemoteObject):
         return u"<Collaborator %s>" % self.id
 
 
-class Collaborators(ListObject):
+class Collaborators(GitHubRemoteListObject):
     entries = fields.List(fields.Object(Collaborator))
 
     @classmethod
