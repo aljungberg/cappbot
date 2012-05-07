@@ -510,9 +510,9 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
 
     parser.add_argument('--settings', default='settings.py',
-        help='Settings file to use')
+        help='settings file to use')
     parser.add_argument('-n', '--dry-run', action='store_true', default=False, dest='dry_run',
-        help='Only pretend to make changes')
+        help='only pretend to make changes')
     parser.add_argument('--log', metavar='LOGFILE', type=argparse.FileType('w'), default=sys.stderr,
         help='file to log to (default: stderr)')
     parser.add_argument('-v', '--verbose', action='append_const', const=True,
@@ -520,7 +520,7 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    settings = imp.load_source('settings', args.settings)
+    settings = imp.load_source('settings', args.settings if os.path.exists(args.settings) else os.path.join(os.path.dirname(__file__), 'default_settings.py'))
 
     if os.path.exists(settings.DATABASE):
         with open(settings.DATABASE, 'rb') as f:

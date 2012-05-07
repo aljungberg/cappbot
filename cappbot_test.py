@@ -43,7 +43,7 @@ class TestCappBot(unittest.TestCase):
         self.log_handler = logbook.TestHandler()
         self.log_handler.push_thread()
 
-        self.settings = imp.load_source('settings', 'settings.py')
+        self.settings = imp.load_source('settings', 'default_settings.py')
         self.settings.GITHUB_REPOSITORY = "alice_tester/blox"
         self.settings.PERMISSIONS['bob'] = ['labels']
         self.database = {}
