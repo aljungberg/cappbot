@@ -195,7 +195,7 @@ class CappBot(object):
         if latest_seen_comment_id is None:
             return comments
 
-        for n, comment in enumerate(comments):
+        for n, comment in enumerate(sorted(comments, key=attrgetter('id'))):
             if comment.id == latest_seen_comment_id:
                 return comments[n + 1:]
             elif comment.id > latest_seen_comment_id:
@@ -354,8 +354,8 @@ class CappBot(object):
         issue._should_ignore = False
         issue._force_paper_trail = False
 
-        # We'll need this now or later, or both. Assume higher id == newer comment.
-        issue._comments = sorted(self.github.Comments.by_issue(issue), key=attrgetter('id'))
+        # We'll need this now or later, or both.
+        issue._comments = self.github.Comments.by_issue(issue)
 
         if self.has_seen_issue(issue):
             # It's not a new issue if we have recorded it previously.
