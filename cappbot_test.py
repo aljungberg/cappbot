@@ -49,8 +49,28 @@ class TestSequenceFunctions(unittest.TestCase):
         self.cappbot = CappBot(self.settings, self.database)
         # Replace the GitHub API with a mock.
         self.cappbot.github = Mock(spec=self.cappbot.github)
-        self.cappbot_user = mini_github3.User.from_dict({'_location': 'https://api.github.com/user', 'api_data': {'bio': None, 'public_gists': 0, 'name': 'CappBot', 'public_repos': 0, 'url': 'https://api.github.com/users/cappbot', 'created_at': '2011-09-02T16:59:16Z', 'html_url': 'https://github.com/cappbot', 'id': 1022439, 'blog': 'www.cappuccino.org', 'email': None, 'avatar_url': 'https://secure.gravatar.com/avatar/44790460d2e62628fc354296057f2b61?d=https://a248.e.akamai.net/assets.github.com%2Fimages%2Fgravatars%2Fgravatar-140.png', 'followers': 0, 'location': 'Villa Straylight', 'gravatar_id': '44790460d2e62628fc354296057f2b61', 'following': 0, 'login': 'cappbot', 'hireable': False, 'type': 'User', 'company': None}, '_http': None, '_delivered': True, 'login': 'cappbot', '_etag': '"9a721b6d43903d25a6a90f73f5c5ddc7"'})
-        self.alice_user = mini_github3.User.from_dict({'_location': 'https://api.github.com/user', 'api_data': {'bio': None, 'public_gists': 0, 'name': 'Alice Tester', 'public_repos': 0, 'url': 'https://api.github.com/users/alice_tester', 'created_at': '2011-09-02T16:59:16Z', 'html_url': 'https://github.com/alice_tester', 'id': 1022439, 'blog': 'www.cappuccino.org', 'email': None, 'avatar_url': 'https://secure.gravatar.com/avatar/44790460d2e62628fc354296057f2b61?d=https://a248.e.akamai.net/assets.github.com%2Fimages%2Fgravatars%2Fgravatar-140.png', 'followers': 0, 'location': 'Villa Straylight', 'gravatar_id': '44790460d2e62628fc354296057f2b61', 'following': 0, 'login': 'cappbot', 'hireable': False, 'type': 'User', 'company': None}, '_http': None, '_delivered': True, 'login': 'alice_tester', '_etag': '"9a721b6d43903d25a6a90f73f5c5ddc7"'})
+
+        user_template = {'public_repos': 0, 'public_gists': 0, 'name': 'CappBot', 'bio': None, 'url': 'https://api.github.com/users/cappbot', 'type': 'User', 'created_at': '2011-09-02T16:59:16Z', 'html_url': 'https://github.com/cappbot', 'email': None, 'blog': 'www.cappuccino.org', 'avatar_url': 'https://secure.gravatar.com/avatar/44790460d2e62628fc354296057f2b61?d=https://a248.e.akamai.net/assets.github.com%2Fimages%2Fgravatars%2Fgravatar-140.png', 'followers': 0, 'location': 'Villa Straylight', 'gravatar_id': '44790460d2e62628fc354296057f2b61', 'following': 0, 'login': 'cappbot', 'hireable': False, 'company': None, 'id': 1022439}
+
+        self.cappbot_user = mini_github3.User.from_dict(user_template)
+
+        user_template = user_template.copy()
+        user_template['name'] = 'Alice Tester'
+        user_template['url'] = 'https://api.github.com/users/alice_tester'
+        user_template['login'] = 'alice'
+        self.alice_user = mini_github3.User.from_dict(user_template)
+
+        user_template = user_template.copy()
+        user_template['name'] = 'Bob Tester'
+        user_template['url'] = 'https://api.github.com/users/bob_tester'
+        user_template['login'] = 'bob'
+        self.bob_user = mini_github3.User.from_dict(user_template)
+
+        user_template = user_template.copy()
+        user_template['name'] = 'Chuck Tester'
+        user_template['url'] = 'https://api.github.com/users/chuck_tester'
+        user_template['login'] = 'chuck'
+        self.chuck_user = mini_github3.User.from_dict(user_template)
 
         self.cappbot.github.current_user = Mock(return_value=self.cappbot_user)
 
@@ -173,3 +193,16 @@ class TestSequenceFunctions(unittest.TestCase):
 
         issues[0].patch.assert_has_calls([call(labels=[u'#new'], milestone=2), call(labels=[u'#new', u'enhancement'])])
         self.assertEquals(issues[0]._mock_comments[-1].body, "**Milestone:** Someday.  **Labels:** #new, enhancement.  **What's next?** A reviewer should examine this issue.")
+
+    def test_multiple_actions_by_comment_label(self):
+        issues, labels, milestones = self.configure_github_mock(load_fixture('issues.json')[7:8], load_fixture('labels.json'), [load_fixture('milestone.json')], [[
+                self.fake_comment(self.alice_user, 'Very enhancing.\n\n+enhancement\n+#needs-test'),
+                self.fake_comment(self.bob_user, '-enhancement\n\n-#needs-test\n+#new\n#acknowledged'),
+                self.fake_comment(self.alice_user, "These aren't labels.\n+#hello\n-balloon"),
+                self.fake_comment(self.alice_user, "-#acknowledged\n+#needs-test"),
+                ]])
+
+        self.cappbot.run()
+
+        issues[0].patch.assert_has_calls([call(labels=[u'#new'], milestone=2), call(labels=[u'#needs-test', u'#new'])])
+        self.assertEquals(issues[0]._mock_comments[-1].body, "**Milestone:** Someday.  **Labels:** #needs-test, #new.  **What's next?** A reviewer should examine this issue.")

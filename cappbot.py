@@ -212,15 +212,22 @@ class CappBot(object):
                 m = ADD_LABEL_REGEX.match(line)
                 if m:
                     new_label = m.group(1) or m.group(2)
-                    if not new_label in labels:
-                        logbook.info("Adding label %s due to comment %s by %s" % (new_label, comment.id, comment.user.login))
-                        labels.add(new_label)
+                    if new_label in self.known_labels:
+                        if not new_label in labels:
+                            logbook.info("Adding label %s due to comment %s by %s" % (new_label, comment.id, comment.user.login))
+                            labels.add(new_label)
+                    else:
+                        logbook.info(u'Ignoring unknown label %s in comment %s by %s.' % (new_label, comment.id, comment.user.login))
                 m = REMOVE_LABEL_REGEX.match(line)
                 if m:
                     remove_label = m.group(1)
-                    if remove_label in labels:
-                        logbook.info("Removing label %s due to comment %s by %s" % (remove_label, comment.id, comment.user.login))
-                        labels.remove(remove_label)
+                    if remove_label in self.known_labels:
+                        if remove_label in labels:
+                            logbook.info("Removing label %s due to comment %s by %s" % (remove_label, comment.id, comment.user.login))
+                            labels.remove(remove_label)
+                    else:
+                        logbook.info(u'Ignoring unknown label %s in comment %s by %s.' % (new_label, comment.id, comment.user.login))
+
         return labels
 
     def altered_labels_per_removal_rules(self, issue, labels):
@@ -340,7 +347,7 @@ class CappBot(object):
         new_labels = self.altered_labels_per_removal_rules(issue, new_labels)
 
         if new_labels != original_labels and not self.dry_run:
-            issue.patch(labels=map(unicode, new_labels))
+            issue.patch(labels=sorted(map(unicode, new_labels)))
 
         # Post paper trail.
         changes = changes.difference(set(['comments']))
