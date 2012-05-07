@@ -221,7 +221,11 @@ class CappBot(object):
         return 'labels' in self.settings.PERMISSIONS.get(user.login, ())
 
     def add_label(self, new_label, labels):
-        labels.add(new_label)
+        if new_label in labels:
+            # Ensure we move this new label to the end of the list. We need to know which
+            # label was added last later.
+            labels.remove(new_label)
+        labels.append(new_label)
         if new_label in self.settings.CLOSE_ISSUE_WHEN_CAPPBOT_ADDS_LABEL or self.should_open_issue is new_label:
             self.should_open_issue = False
             self.should_close_issue = new_label
@@ -232,15 +236,17 @@ class CappBot(object):
             self.send_message(comment.user, u'Unknown label', u'(Your comment)[%s] appears to request that the label `%s` is added to the issue but this does not seems to be a valid label.' % (comment.url, new_label))
             return
 
-        if not new_label in labels:
-            if not self.user_may_alter_labels(comment.user):
-                logbook.warning(u"Ignoring unathorised attempt to alter labels by %s through comment %s." % (comment.user.login, comment.url))
-                self.send_message(comment.user, u'Unable to alter label', u'(Your comment)[%s] appears to request that the label `%s` is added to the issue but you do not have the required authorisation.' % (comment.url, new_label))
-            else:
-                logbook.info("Adding label %s due to comment %s by %s" % (new_label, comment.url, comment.user.login))
-                self.add_label(new_label, labels)
+        if not self.user_may_alter_labels(comment.user):
+            logbook.warning(u"Ignoring unathorised attempt to alter labels by %s through comment %s." % (comment.user.login, comment.url))
+            self.send_message(comment.user, u'Unable to alter label', u'(Your comment)[%s] appears to request that the label `%s` is added to the issue but you do not have the required authorisation.' % (comment.url, new_label))
+        else:
+            logbook.info("Adding label %s due to comment %s by %s" % (new_label, comment.url, comment.user.login))
+            self.add_label(new_label, labels)
 
     def remove_label(self, remove_label, labels):
+        if not remove_label in labels:
+            return
+
         labels.remove(remove_label)
         if remove_label in self.settings.OPEN_ISSUE_WHEN_CAPPBOT_REMOVES_LABEL or self.should_close_issue is remove_label:
             self.should_open_issue = remove_label
@@ -252,17 +258,16 @@ class CappBot(object):
             self.send_message(comment.user, u'Unknown label', u'(Your comment)[%s] appears to request that the label `%s` is removed from the issue but this does not seems to be a valid label.' % (comment.url, remove_label))
             return
 
-        if remove_label in labels:
-            if not self.user_may_alter_labels(comment.user):
-                logbook.warning(u"Ignoring unathorised attempt to alter labels by %s through comment %s." % (comment.user.login, comment.url))
-                self.send_message(comment.user, u'Unable to alter label', u'(Your comment)[%s] appears to request that the label `%s` is removed from the issue but you do not have the required authorisation.' % (comment.url, remove_label))
-            else:
-                logbook.info("Removing label %s due to comment %s by %s" % (remove_label, comment.id, comment.user.login))
-                self.remove_label(remove_label, labels)
+        if not self.user_may_alter_labels(comment.user):
+            logbook.warning(u"Ignoring unathorised attempt to alter labels by %s through comment %s." % (comment.user.login, comment.url))
+            self.send_message(comment.user, u'Unable to alter label', u'(Your comment)[%s] appears to request that the label `%s` is removed from the issue but you do not have the required authorisation.' % (comment.url, remove_label))
+        else:
+            logbook.info("Removing label %s due to comment %s by %s" % (remove_label, comment.id, comment.user.login))
+            self.remove_label(remove_label, labels)
 
     def altered_labels_by_interpreting_new_comments(self, issue, labels):
         new_comments = self.get_new_comments(issue)
-        labels = labels.copy()
+        labels = labels[:]
 
         logbook.debug(u"Examining %d new comments for %s" % (len(new_comments), issue))
 
@@ -297,6 +302,19 @@ class CappBot(object):
                         logbook.info("Removing label %s due to label %s being set." % (label, trigger_label))
                         # This ensures that side effects of removing the label kick in.
                         self.remove_label(label, labels)
+
+        # Remove conflicting labels.
+        backwards = list(reversed(labels))
+        for n, label in enumerate(backwards):
+            if label in self.settings.MUTUALLY_EXCLUSIVE_LABELS:
+                for other_label in backwards[n + 1:]:
+                    if other_label in self.settings.MUTUALLY_EXCLUSIVE_LABELS:
+                        logbook.info("Removing label %s due to label %s being set." % (other_label, label))
+                        # This ensures that side effects of removing the label kick in.
+                        self.remove_label(other_label, labels)
+                # We've removed all conflicting labels at this stage so we're done.
+                break
+
         return labels
 
     def recount_votes(self, issue):
@@ -395,8 +413,8 @@ class CappBot(object):
             logbook.debug(u"No changes for %s" % issue)
             return
 
-        original_labels = set(label.name for label in issue.labels)
-        new_labels = original_labels.copy()
+        original_labels = [label.name for label in issue.labels]
+        new_labels = original_labels[:]
 
         did_change_votes = False
         if 'comments' in changes:
@@ -410,7 +428,7 @@ class CappBot(object):
         # Remove labels superseded by new labels.
         new_labels = self.altered_labels_per_removal_rules(issue, new_labels)
 
-        if new_labels != original_labels and not self.dry_run:
+        if set(new_labels) != set(original_labels) and not self.dry_run:
             issue.patch(labels=sorted(map(unicode, new_labels)))
 
         # Post paper trail.

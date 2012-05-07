@@ -19,22 +19,17 @@ NEW_ISSUE_DEFAULTS = {
 # When the given label has been set, clear these other labels.
 WHEN_LABEL_REMOVE_LABELS = {
     '#acknowledged': [
-        '#new',
         '#needs-confirmation',
         '#needs-info',
     ],
 
     '#accepted': [
-        '#new',
         '#needs-confirmation',
         '#needs-info',
         '#needs-review',
-        '#wont-fix',
-        '#works-for-me'
     ],
 
     '#ready-to-commit': [
-        '#new',
         '#needs-confirmation',
         '#needs-docs',
         '#needs-improvement',
@@ -43,12 +38,9 @@ WHEN_LABEL_REMOVE_LABELS = {
         '#needs-reduction',
         '#needs-review',
         '#needs-unit-test',
-        '#wont-fix',
-        '#works-for-me'
     ],
 
     '#fixed': [
-        '#new',
         '#needs-confirmation',
         '#needs-docs',
         '#needs-improvement',
@@ -58,22 +50,17 @@ WHEN_LABEL_REMOVE_LABELS = {
         '#needs-review',
         '#needs-unit-test',
         '#ready-to-commit'
-        '#wont-fix',
-        '#works-for-me'
     ],
-
-    '#wont-fix': [
-        '#new'
-    ],
-
-    '#works-for-me': [
-        '#new'
-    ],
-
-    '#duplicate': [
-        '#new'
-    ]
 }
+
+# State Labels
+# If more than one of these labels is set at the same time, all but the last added
+# one is dropped. If the last added one cannot be determined (for example due to
+# someone hand editing labels between CappBot runs), labels will be removed
+# arbitrarily to create a valid state.
+MUTUALLY_EXCLUSIVE_LABELS = [
+    '#new', '#accepted', '#wont-fix', '#works-for-me', '#fixed'
+]
 
 # If this label is added using a CappBot command, also close the issue.
 CLOSE_ISSUE_WHEN_CAPPBOT_ADDS_LABEL = [
