@@ -38,7 +38,7 @@ def load_fixture(name):
         return json.load(inf)
 
 
-class TestSequenceFunctions(unittest.TestCase):
+class TestCappBot(unittest.TestCase):
     def setUp(self):
         self.log_handler = logbook.TestHandler()
         self.log_handler.push_thread()
@@ -150,6 +150,7 @@ class TestSequenceFunctions(unittest.TestCase):
         self.cappbot.github.Milestones.get_or_create_in_repository = Mock(side_effect=milestone_get_or_create_in_repository)
 
         self.cappbot.github.Issues.by_repository = Mock(return_value=issues)
+        self.cappbot.github.Issues.by_repository_all = Mock(return_value=issues)
 
         for n, issue in enumerate(issues):
             issue._mock_comments = mini_github3.Comments.from_dict(comments[n]) if n < len(comments) else mini_github3.Comments(entries=[])
@@ -203,7 +204,7 @@ class TestSequenceFunctions(unittest.TestCase):
                 self.fake_comment(self.bob_user, '-enhancement\n\n-#needs-test\n+#new\n#acknowledged'),
                 self.fake_comment(self.alice_user, "These aren't labels.\n+#hello\n-balloon"),
                 self.fake_comment(self.alice_user, "-#acknowledged\n+#needs-test"),
-                ]])
+            ]])
 
         self.cappbot.run()
 
@@ -222,3 +223,30 @@ class TestSequenceFunctions(unittest.TestCase):
 
         issues[0].patch.assert_has_calls([])
         self.assertEquals(issues[0]._mock_comments[-1].body, u"**Labels:** enhancement, question.  **What's next?** A reviewer should examine this issue.")
+
+    def test_action_by_comment_close_issue(self):
+        issues, labels, milestones = self.configure_github_mock(load_fixture('issues.json')[7:8], load_fixture('labels.json'), [load_fixture('milestone.json')], [[self.fake_comment(self.alice_user, 'Stupid.\n#wont-fix')]])
+
+        self.cappbot.run()
+
+        issues[0].patch.assert_has_calls([
+            call(labels=[u'#new'], milestone=2),
+            call(labels=[u'#wont-fix']),
+            call(state='closed')
+        ])
+
+        self.assertEquals(issues[0]._mock_comments[-1].body, "**Milestone:** Someday.  **Label:** #wont-fix.  **What's next?** A reviewer or core team member has decided against acting upon this issue.")
+
+    def test_action_by_comment_open_issue(self):
+        issues, labels, milestones = self.configure_github_mock(load_fixture('issues.json')[7:8], load_fixture('labels.json'), [load_fixture('milestone.json')], [[self.fake_comment(self.alice_user, 'Not actually fixed. \n-#fixed')]])
+        issues[0].labels = [labels[6]]
+        issues[0].state = 'closed'
+
+        # CappBot will record the issue as manually triaged and ignore any comment actions.
+        self.cappbot.run()
+        issues[0].patch.assert_has_calls([
+            call(labels=[]),
+            call(state='open')
+        ])
+
+        self.assertEquals(issues[0]._mock_comments[-1].body, "**What's next?** A reviewer should examine this issue.")

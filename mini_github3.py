@@ -457,15 +457,25 @@ class Issues(ListObject):
     entries = fields.List(fields.Object(Issue))
 
     @classmethod
-    def by_repository(cls, user_name, repo_name, http=None, **kwargs):
+    def by_repository(cls, user_name, repo_name, http=None, state='open', **kwargs):
         """Get issues by repository.
 
         `GET /repos/:user/:repo/issues`
 
         """
 
-        url = '/repos/%s/%s/issues' % (user_name, repo_name)
+        url = '/repos/%s/%s/issues?state=%s' % (user_name, repo_name, state)
         return cls.get(urljoin(GitHub.endpoint, url), http=http)
+
+    @classmethod
+    def by_repository_all(cls, user_name, repo_name, http=None):
+        """Get all issues by repository (open and closed)."""
+
+        open_issues = cls.by_repository(user_name, repo_name, http=http, state='open')
+        closed_issues = cls.by_repository(user_name, repo_name, http=http, state='closed')
+
+        open_issues.entries.extend(closed_issues.entries)
+        return open_issues
 
 
 class Collaborator(GitHubRemoteObject):

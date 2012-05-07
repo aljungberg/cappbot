@@ -25,6 +25,7 @@ Perform various automation and paper trail functionality on GitHub issues to aug
  * For every issue:
      * Detect when the labels, milestone or assignee changes and post the new information as a comment. This leaves a "paper trail" so that readers can see *when* things happened. It answers questions like "when was this label added?" or "when was this issue assigned to the current assignee?"
      * Detect special syntax in comments to add or remove labels. For example, `+#needs-test` on a line by itself adds the `#needs-test` label, while `-AppKit` would remove the `AppKit` label.
+     * If label adding syntax is used, the issue might be automatically opened or closed. E.g. `+#wont-fix` also closes the issue, while `-#fixed` reopens it.
      * Remove labels automatically. If an issue receives the label `#accepted`, CappBot would remove `#needs-test` for instance.
      * All of the above features greatly assist when working with Pull requests because labels are usually not visible nor changeable from within a Pull request on github.com.
      * Individuals can be given permission to add or remove labels through the above mechanism without being repository contributors.
@@ -50,6 +51,8 @@ Perform various automation and paper trail functionality on GitHub issues to aug
 #   2. if a new label has been added which implies other labels should be removed, remove them.
 #   3. if the labels, milestone or assignee has been changed, post a status update comment.
 #   4. if the voting tally has changed, add it to the title.
+#   5. post paper trail
+#   6. close or reopen the issue if the syntax in 1 triggers such actions.
 #
 # For determining what is 'new' and what is old, keep a small local database recording the newest change we've
 # processed.
@@ -212,6 +215,46 @@ class CappBot(object):
     def user_may_alter_labels(self, user):
         return 'labels' in self.settings.PERMISSIONS.get(user.login, ())
 
+    def add_label(self, new_label, labels):
+        labels.add(new_label)
+        if new_label in self.settings.CLOSE_ISSUE_WHEN_CAPPBOT_ADDS_LABEL or self.should_open_issue is new_label:
+            self.should_open_issue = False
+            self.should_close_issue = new_label
+
+    def add_label_due_to_comment(self, new_label, comment, labels):
+        if not new_label in self.known_labels:
+            logbook.info(u'Ignoring unknown label %s in comment %s by %s.' % (new_label, comment.url, comment.user.login))
+            self.send_message(comment.user, u'Unknown label', u'(Your comment)[%s] appears to request that the label `%s` is added to the issue but this does not seems to be a valid label.' % (comment.url, new_label))
+            return
+
+        if not new_label in labels:
+            if not self.user_may_alter_labels(comment.user):
+                logbook.warning(u"Ignoring unathorised attempt to alter labels by %s through comment %s." % (comment.user.login, comment.url))
+                self.send_message(comment.user, u'Unable to alter label', u'(Your comment)[%s] appears to request that the label `%s` is added to the issue but you do not have the required authorisation.' % (comment.url, new_label))
+            else:
+                logbook.info("Adding label %s due to comment %s by %s" % (new_label, comment.url, comment.user.login))
+                self.add_label(new_label, labels)
+
+    def remove_label(self, remove_label, labels):
+        labels.remove(remove_label)
+        if remove_label in self.settings.OPEN_ISSUE_WHEN_CAPPBOT_REMOVES_LABEL or self.should_close_issue is remove_label:
+            self.should_open_issue = remove_label
+            self.should_close_issue = False
+
+    def remove_label_due_to_comment(self, remove_label, comment, labels):
+        if not remove_label in self.known_labels:
+            logbook.info(u'Ignoring unknown label %s in comment %s by %s.' % (remove_label, comment.id, comment.user.login))
+            self.send_message(comment.user, u'Unknown label', u'(Your comment)[%s] appears to request that the label `%s` is removed from the issue but this does not seems to be a valid label.' % (comment.url, remove_label))
+            return
+
+        if remove_label in labels:
+            if not self.user_may_alter_labels(comment.user):
+                logbook.warning(u"Ignoring unathorised attempt to alter labels by %s through comment %s." % (comment.user.login, comment.url))
+                self.send_message(comment.user, u'Unable to alter label', u'(Your comment)[%s] appears to request that the label `%s` is removed from the issue but you do not have the required authorisation.' % (comment.url, remove_label))
+            else:
+                logbook.info("Removing label %s due to comment %s by %s" % (remove_label, comment.id, comment.user.login))
+                self.remove_label(remove_label, labels)
+
     def altered_labels_by_interpreting_new_comments(self, issue, labels):
         new_comments = self.get_new_comments(issue)
         labels = labels.copy()
@@ -229,42 +272,24 @@ class CappBot(object):
 
                 m = ADD_LABEL_REGEX.match(line)
                 if m:
-                    new_label = m.group(1) or m.group(2)
-                    if new_label in self.known_labels:
-                        if not new_label in labels:
-                            if not self.user_may_alter_labels(comment.user):
-                                logbook.warning(u"Ignoring unathorised attempt to alter labels by %s through comment %s." % (comment.user.login, comment.url))
-                                self.send_message(comment.user, u'Unable to alter label', u'(Your comment)[%s] appears to request that the label `%s` is added to the issue but you do not have the required authorisation.' % (comment.url, new_label))
-                            else:
-                                logbook.info("Adding label %s due to comment %s by %s" % (new_label, comment.url, comment.user.login))
-                                labels.add(new_label)
-                    else:
-                        logbook.info(u'Ignoring unknown label %s in comment %s by %s.' % (new_label, comment.url, comment.user.login))
-                        self.send_message(comment.user, u'Unknown label', u'(Your comment)[%s] appears to request that the label `%s` is added to the issue but this does not seems to be a valid label.' % (comment.url, new_label))
+                    new_label = (m.group(1) or m.group(2)).lower()
+                    self.add_label_due_to_comment(new_label, comment, labels)
+
                 m = REMOVE_LABEL_REGEX.match(line)
                 if m:
-                    remove_label = m.group(1)
-                    if remove_label in self.known_labels:
-                        if remove_label in labels:
-                            if not self.user_may_alter_labels(comment.user):
-                                logbook.warning(u"Ignoring unathorised attempt to alter labels by %s through comment %s." % (comment.user.login, comment.url))
-                                self.send_message(comment.user, u'Unable to alter label', u'(Your comment)[%s] appears to request that the label `%s` is removed from the issue but you do not have the required authorisation.' % (comment.url, new_label))
-                            else:
-                                logbook.info("Removing label %s due to comment %s by %s" % (remove_label, comment.id, comment.user.login))
-                                labels.remove(remove_label)
-                    else:
-                        logbook.info(u'Ignoring unknown label %s in comment %s by %s.' % (new_label, comment.id, comment.user.login))
-                        self.send_message(comment.user, u'Unknown label', u'(Your comment)[%s] appears to request that the label `%s` is removed from the issue but this does not seems to be a valid label.' % (comment.url, new_label))
+                    remove_label = m.group(1).lower()
+                    self.remove_label_due_to_comment(remove_label, comment, labels)
 
         return labels
 
     def altered_labels_per_removal_rules(self, issue, labels):
         for trigger_label, labels_to_remove in self.settings.WHEN_LABEL_REMOVE_LABELS.items():
             if trigger_label in labels:
-                updated_labels = labels.difference(set(labels_to_remove))
-                if updated_labels != labels:
-                    logbook.info("Removed label(s) %s due to label %s being set" % (", ".join(labels.difference(updated_labels)), trigger_label))
-                    labels = updated_labels
+                for label in labels_to_remove:
+                    if label in labels:
+                        logbook.info("Removing label %s due to label %s being set" % (label, trigger_label))
+                        # This ensures that side effects of removing the label kick in.
+                        self.remove_label(label, labels)
         return labels
 
     def recount_votes(self, issue):
@@ -354,6 +379,9 @@ class CappBot(object):
             # on it so there's no paper trail yet.
             issue._force_paper_trail = True
 
+        self.should_close_issue = False
+        self.should_open_issue = False
+
         changes = self.get_issue_changes(issue)
 
         if not changes:
@@ -408,6 +436,16 @@ class CappBot(object):
                 issue._comments.post(comment)
                 self.record_latest_seen_comment(issue)
 
+            # Close or open the issue last - it looks more natural after the paper trail.
+            if self.should_close_issue and issue.state != 'closed':
+                logbook.info(u'Closing %s due to label %s being added' % (issue, self.should_close_issue))
+                if not self.dry_run:
+                    issue.patch(state="closed")
+            elif self.should_open_issue and issue.state != 'open':
+                logbook.info(u'Reopening %s due to label %s being removed' % (issue, self.should_open_issue))
+                if not self.dry_run:
+                    issue.patch(state="open")
+
         # Now record the latest labels etc so we don't react to these same changes the next time.
         self.record_issue(issue)
 
@@ -424,7 +462,7 @@ class CappBot(object):
             self.settings.PERMISSIONS[login] = ['labels', 'assignee', 'milestone']
 
         # Find all issues.
-        issues = self.github.Issues.by_repository(self.repo_user, self.repo_name)
+        issues = self.github.Issues.by_repository_all(self.repo_user, self.repo_name)
 
         logbook.info("Found %d issue(s)." % len(issues))
 
