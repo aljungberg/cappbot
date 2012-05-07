@@ -110,7 +110,7 @@ class CappBot(object):
             'number': int(issue.number),
             'comments_count': int(issue.comments),
             'milestone_number': int(issue.milestone.number) if issue.milestone else None,
-            'assignee_id': int(issue.assignee.id) if issue.assignee else None,  # github3 is a little inconsistent ATM.
+            'assignee_id': int(issue.assignee.id) if issue.assignee else None,
             'labels': sorted(label.name for label in issue.labels),
         }
 
@@ -231,7 +231,7 @@ class CappBot(object):
         return labels
 
     def altered_labels_per_removal_rules(self, issue, labels):
-        for trigger_label, labels_to_remove in settings.WHEN_LABEL_REMOVE_LABELS.items():
+        for trigger_label, labels_to_remove in self.settings.WHEN_LABEL_REMOVE_LABELS.items():
             if trigger_label in labels:
                 updated_labels = labels.difference(set(labels_to_remove))
                 if updated_labels != labels:
@@ -372,7 +372,7 @@ class CappBot(object):
         if new_labels != original_labels:
             changes.add('labels')
         if len(changes):
-            msg = settings.getPaperTrailMessage(issue.assignee.login if issue.assignee else None, issue.milestone.title if issue.milestone else None, new_labels, self.get_vote_count(issue))
+            msg = self.settings.getPaperTrailMessage(issue.assignee.login if issue.assignee else None, issue.milestone.title if issue.milestone else None, new_labels, self.get_vote_count(issue))
             comment = self.github.Comment()
             comment.body = msg
             logbook.info(u"Adding paper trail for %s (changes: %s): '%s'" % (issue, ", ".join(changes), msg))
