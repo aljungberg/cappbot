@@ -18,6 +18,7 @@
 from mock import Mock
 import imp
 import json
+import logbook
 import os
 import unittest
 
@@ -39,6 +40,9 @@ def load_fixture(name):
 
 class TestSequenceFunctions(unittest.TestCase):
     def setUp(self):
+        self.log_handler = logbook.TestHandler()
+        self.log_handler.push_thread()
+
         self.settings = imp.load_source('settings', 'settings.py')
         self.settings.GITHUB_REPOSITORY = "alice/blox"
         self.database = {}
@@ -47,6 +51,9 @@ class TestSequenceFunctions(unittest.TestCase):
         self.cappbot.github = Mock(spec=self.cappbot.github)
         self.test_user = mini_github3.User.from_dict({'_location': 'https://api.github.com/user', 'api_data': {'bio': None, 'public_gists': 0, 'name': 'CappBot', 'public_repos': 0, 'url': 'https://api.github.com/users/cappbot', 'created_at': '2011-09-02T16:59:16Z', 'html_url': 'https://github.com/cappbot', 'id': 1022439, 'blog': 'www.cappuccino.org', 'email': None, 'avatar_url': 'https://secure.gravatar.com/avatar/44790460d2e62628fc354296057f2b61?d=https://a248.e.akamai.net/assets.github.com%2Fimages%2Fgravatars%2Fgravatar-140.png', 'followers': 0, 'location': 'Villa Straylight', 'gravatar_id': '44790460d2e62628fc354296057f2b61', 'following': 0, 'login': 'cappbot', 'hireable': False, 'type': 'User', 'company': None}, '_http': None, '_delivered': True, 'login': 'cappbot', '_etag': '"9a721b6d43903d25a6a90f73f5c5ddc7"'})
         self.cappbot.github.current_user = Mock(return_value=self.test_user)
+
+    def tearDown(self):
+        self.log_handler.pop_thread()
 
     def test_ensure_referenced_labels_exist(self):
         self.cappbot.ensure_referenced_labels_exist()
@@ -66,11 +73,10 @@ class TestSequenceFunctions(unittest.TestCase):
 
         # There's quite a bit of GitHub interaction to fake.
 
-        comments = comments or {}
+        comments = comments or []
         issues = mini_github3.Issues.from_dict(issues)
         labels = mini_github3.Labels.from_dict(labels)
         milestones = mini_github3.Milestones.from_dict(milestones)
-        comments = mini_github3.Comments.from_dict(comments)
 
         self.cappbot.github.Labels.by_repository = Mock(return_value=labels)
 
@@ -104,7 +110,6 @@ class TestSequenceFunctions(unittest.TestCase):
         install_list_post_patch(issues)
         install_list_post_patch(milestones)
         install_list_post_patch(labels)
-        install_list_post_patch(comments)
 
         def milestone_get_or_create_in_repository(user_name, repo_name, milestone_title):
             for milestone in milestones:
@@ -123,6 +128,7 @@ class TestSequenceFunctions(unittest.TestCase):
 
         for n, issue in enumerate(issues):
             issue._mock_comments = mini_github3.Comments.from_dict(comments[n]) if n < len(comments) else mini_github3.Comments(entries=[])
+            issue.comments = len(issue._mock_comments)
             install_list_post_patch(issue._mock_comments)
 
         def get_comments(issue):
@@ -130,10 +136,10 @@ class TestSequenceFunctions(unittest.TestCase):
 
         self.cappbot.github.Comments.by_issue = Mock(side_effect=get_comments)
 
-        return issues, labels, milestones, comments
+        return issues, labels, milestones
 
     def test_install_defaults(self):
-        issues, labels, milestones, comments = self.configure_github_mock(load_fixture('issues.json')[7:8], load_fixture('labels.json'), [load_fixture('milestone.json')])
+        issues, labels, milestones = self.configure_github_mock(load_fixture('issues.json')[7:8], load_fixture('labels.json'), [load_fixture('milestone.json')])
 
         self.cappbot.run()
 
@@ -141,3 +147,13 @@ class TestSequenceFunctions(unittest.TestCase):
         self.assertEquals(issues[0]._mock_comments[-1].body, "**Milestone:** Someday.  **Label:** #new.  **What's next?** A reviewer should examine this issue.")
         issues[0]._mock_comments.post.assert_called_with(issues[0]._mock_comments[-1])
 
+    def test_ignore_deja_vu(self):
+        cappbot_comment = [{'body': 'Hello.', 'url': 'https://api.github.com/repos/cappuccino/cappuccino/issues/comments/5207159', 'created_at': '2012-04-18T19:54:40Z', 'updated_at': '2012-04-18T19:54:40Z', 'user': {'url': 'https://api.github.com/users/cappbot', 'login': 'cappbot', 'avatar_url': 'https://secure.gravatar.com/avatar/44790460d2e62628fc354296057f2b61?d=https://a248.e.akamai.net/assets.github.com%2Fimages%2Fgravatars%2Fgravatar-140.png', 'id': 1022439, 'gravatar_id': '44790460d2e62628fc354296057f2b61'}, 'id': 5207159}]
+
+        issues, labels, milestones = self.configure_github_mock(load_fixture('issues.json')[7:8], load_fixture('labels.json'), [load_fixture('milestone.json')], [cappbot_comment])
+
+        self.cappbot.run()
+
+        # No new comment should have been posted.
+        self.assertTrue(any(u'Déjà vu: it looks like CappBot has interacted with' in record for record in self.log_handler.formatted_records))
+        self.assertEquals([c.body for c in issues[0]._mock_comments], ['Hello.'])
