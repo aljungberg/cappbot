@@ -59,6 +59,7 @@ Perform various automation and paper trail functionality on GitHub issues to aug
 #
 # We also need to check user permissions so that not just anyone can change issues.
 
+from operator import attrgetter
 import argparse
 import imp
 import json
@@ -197,6 +198,10 @@ class CappBot(object):
         for n, comment in enumerate(comments):
             if comment.id == latest_seen_comment_id:
                 return comments[n + 1:]
+            elif comment.id > latest_seen_comment_id:
+                # Assume comment ids always go up, so if the last seen comment has been deleted,
+                # we'll react to the next one.
+                return comments[n:]
 
         return []
 
@@ -259,6 +264,8 @@ class CappBot(object):
         new_comments = self.get_new_comments(issue)
         labels = labels.copy()
 
+        logbook.debug(u"Examining %d new comments for %s" % (len(new_comments), issue))
+
         for comment in new_comments:
             if not comment.body:
                 continue
@@ -287,7 +294,7 @@ class CappBot(object):
             if trigger_label in labels:
                 for label in labels_to_remove:
                     if label in labels:
-                        logbook.info("Removing label %s due to label %s being set" % (label, trigger_label))
+                        logbook.info("Removing label %s due to label %s being set." % (label, trigger_label))
                         # This ensures that side effects of removing the label kick in.
                         self.remove_label(label, labels)
         return labels
@@ -347,8 +354,8 @@ class CappBot(object):
         issue._should_ignore = False
         issue._force_paper_trail = False
 
-        # We'll need this now or later, or both.
-        issue._comments = self.github.Comments.by_issue(issue)
+        # We'll need this now or later, or both. Assume higher id == newer comment.
+        issue._comments = sorted(self.github.Comments.by_issue(issue), key=attrgetter('id'))
 
         if self.has_seen_issue(issue):
             # It's not a new issue if we have recorded it previously.
@@ -385,6 +392,7 @@ class CappBot(object):
         changes = self.get_issue_changes(issue)
 
         if not changes:
+            logbook.debug(u"No changes for %s" % issue)
             return
 
         original_labels = set(label.name for label in issue.labels)
