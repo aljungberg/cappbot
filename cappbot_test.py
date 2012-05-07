@@ -15,7 +15,7 @@
 # THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
-from mock import Mock
+from mock import Mock, call
 import imp
 import json
 import logbook
@@ -49,8 +49,10 @@ class TestSequenceFunctions(unittest.TestCase):
         self.cappbot = CappBot(self.settings, self.database)
         # Replace the GitHub API with a mock.
         self.cappbot.github = Mock(spec=self.cappbot.github)
-        self.test_user = mini_github3.User.from_dict({'_location': 'https://api.github.com/user', 'api_data': {'bio': None, 'public_gists': 0, 'name': 'CappBot', 'public_repos': 0, 'url': 'https://api.github.com/users/cappbot', 'created_at': '2011-09-02T16:59:16Z', 'html_url': 'https://github.com/cappbot', 'id': 1022439, 'blog': 'www.cappuccino.org', 'email': None, 'avatar_url': 'https://secure.gravatar.com/avatar/44790460d2e62628fc354296057f2b61?d=https://a248.e.akamai.net/assets.github.com%2Fimages%2Fgravatars%2Fgravatar-140.png', 'followers': 0, 'location': 'Villa Straylight', 'gravatar_id': '44790460d2e62628fc354296057f2b61', 'following': 0, 'login': 'cappbot', 'hireable': False, 'type': 'User', 'company': None}, '_http': None, '_delivered': True, 'login': 'cappbot', '_etag': '"9a721b6d43903d25a6a90f73f5c5ddc7"'})
-        self.cappbot.github.current_user = Mock(return_value=self.test_user)
+        self.cappbot_user = mini_github3.User.from_dict({'_location': 'https://api.github.com/user', 'api_data': {'bio': None, 'public_gists': 0, 'name': 'CappBot', 'public_repos': 0, 'url': 'https://api.github.com/users/cappbot', 'created_at': '2011-09-02T16:59:16Z', 'html_url': 'https://github.com/cappbot', 'id': 1022439, 'blog': 'www.cappuccino.org', 'email': None, 'avatar_url': 'https://secure.gravatar.com/avatar/44790460d2e62628fc354296057f2b61?d=https://a248.e.akamai.net/assets.github.com%2Fimages%2Fgravatars%2Fgravatar-140.png', 'followers': 0, 'location': 'Villa Straylight', 'gravatar_id': '44790460d2e62628fc354296057f2b61', 'following': 0, 'login': 'cappbot', 'hireable': False, 'type': 'User', 'company': None}, '_http': None, '_delivered': True, 'login': 'cappbot', '_etag': '"9a721b6d43903d25a6a90f73f5c5ddc7"'})
+        self.alice_user = mini_github3.User.from_dict({'_location': 'https://api.github.com/user', 'api_data': {'bio': None, 'public_gists': 0, 'name': 'Alice Tester', 'public_repos': 0, 'url': 'https://api.github.com/users/alice_tester', 'created_at': '2011-09-02T16:59:16Z', 'html_url': 'https://github.com/alice_tester', 'id': 1022439, 'blog': 'www.cappuccino.org', 'email': None, 'avatar_url': 'https://secure.gravatar.com/avatar/44790460d2e62628fc354296057f2b61?d=https://a248.e.akamai.net/assets.github.com%2Fimages%2Fgravatars%2Fgravatar-140.png', 'followers': 0, 'location': 'Villa Straylight', 'gravatar_id': '44790460d2e62628fc354296057f2b61', 'following': 0, 'login': 'cappbot', 'hireable': False, 'type': 'User', 'company': None}, '_http': None, '_delivered': True, 'login': 'alice_tester', '_etag': '"9a721b6d43903d25a6a90f73f5c5ddc7"'})
+
+        self.cappbot.github.current_user = Mock(return_value=self.cappbot_user)
 
     def tearDown(self):
         self.log_handler.pop_thread()
@@ -62,7 +64,7 @@ class TestSequenceFunctions(unittest.TestCase):
     def test_current_user(self):
         current_user = self.cappbot.current_user
         self.cappbot.github.current_user.assert_called_once_with()
-        self.assertEquals(current_user, self.test_user)
+        self.assertEquals(current_user, self.cappbot_user)
 
     def configure_github_mock(self, issues, labels, milestones, comments=None):
         """Configure the GitHub API mock to make certain data available.
@@ -147,8 +149,14 @@ class TestSequenceFunctions(unittest.TestCase):
         self.assertEquals(issues[0]._mock_comments[-1].body, "**Milestone:** Someday.  **Label:** #new.  **What's next?** A reviewer should examine this issue.")
         issues[0]._mock_comments.post.assert_called_with(issues[0]._mock_comments[-1])
 
+    def fake_comment(self, owner, body):
+        number = getattr(self, 'fake_comment_number', 5207158) + 1
+        self.fake_comment_number = number
+        # Date doesn't increase with new comments which maybe isn't entirel realistic.
+        return {'body': body, 'url': 'https://api.github.com/repos/cappuccino/cappuccino/issues/comments/%d' % number, 'created_at': '2012-04-18T19:54:40Z', 'updated_at': '2012-04-18T19:54:40Z', 'user': owner.to_dict(), 'id': number}
+
     def test_ignore_deja_vu(self):
-        cappbot_comment = [{'body': 'Hello.', 'url': 'https://api.github.com/repos/cappuccino/cappuccino/issues/comments/5207159', 'created_at': '2012-04-18T19:54:40Z', 'updated_at': '2012-04-18T19:54:40Z', 'user': {'url': 'https://api.github.com/users/cappbot', 'login': 'cappbot', 'avatar_url': 'https://secure.gravatar.com/avatar/44790460d2e62628fc354296057f2b61?d=https://a248.e.akamai.net/assets.github.com%2Fimages%2Fgravatars%2Fgravatar-140.png', 'id': 1022439, 'gravatar_id': '44790460d2e62628fc354296057f2b61'}, 'id': 5207159}]
+        cappbot_comment = [self.fake_comment(self.cappbot_user, 'Hello.')]
 
         issues, labels, milestones = self.configure_github_mock(load_fixture('issues.json')[7:8], load_fixture('labels.json'), [load_fixture('milestone.json')], [cappbot_comment])
 
@@ -157,3 +165,11 @@ class TestSequenceFunctions(unittest.TestCase):
         # No new comment should have been posted.
         self.assertTrue(any(u'Déjà vu: it looks like CappBot has interacted with' in record for record in self.log_handler.formatted_records))
         self.assertEquals([c.body for c in issues[0]._mock_comments], ['Hello.'])
+
+    def test_action_by_comment_label(self):
+        issues, labels, milestones = self.configure_github_mock(load_fixture('issues.json')[7:8], load_fixture('labels.json'), [load_fixture('milestone.json')], [[self.fake_comment(self.alice_user, 'Very enhancing.\n\n+enhancement')]])
+
+        self.cappbot.run()
+
+        issues[0].patch.assert_has_calls([call(labels=[u'#new'], milestone=2), call(labels=[u'#new', u'enhancement'])])
+        self.assertEquals(issues[0]._mock_comments[-1].body, "**Milestone:** Someday.  **Labels:** #new, enhancement.  **What's next?** A reviewer should examine this issue.")
