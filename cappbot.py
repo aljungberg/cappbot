@@ -194,6 +194,14 @@ class CappBot(object):
 
         return []
 
+    def send_message(self, user, subject, body):
+        if not user.email:
+            logbook.info("No email address found. Unable to send to %s: %s" % (user.login, body))
+        logbook.info("Sending message to %s (%s): %s" % (user.login, user.email, body))
+        if not self.dry_run:
+            # TODO
+            pass
+
     def altered_labels_by_interpreting_new_comments(self, issue, labels):
         new_comments = self.get_new_comments(issue)
         labels = labels.copy()
@@ -218,6 +226,7 @@ class CappBot(object):
                             labels.add(new_label)
                     else:
                         logbook.info(u'Ignoring unknown label %s in comment %s by %s.' % (new_label, comment.id, comment.user.login))
+                        self.send_message(comment.user, u'Unknown label', u'(Your comment)[%s] appears to request that the label `%s` is added to the issue but this does not seems to be a valid label.' % (comment.url, new_label))
                 m = REMOVE_LABEL_REGEX.match(line)
                 if m:
                     remove_label = m.group(1)
@@ -227,6 +236,7 @@ class CappBot(object):
                             labels.remove(remove_label)
                     else:
                         logbook.info(u'Ignoring unknown label %s in comment %s by %s.' % (new_label, comment.id, comment.user.login))
+                        self.send_message(comment.user, u'Unknown label', u'(Your comment)[%s] appears to request that the label `%s` is removed from the issue but this does not seems to be a valid label.' % (comment.url, new_label))
 
         return labels
 
