@@ -393,7 +393,7 @@ class CappBot(object):
             # Assign default labels and milestone.
             self.install_issue_defaults(issue)
         else:
-            logbook.info(u"Recording manually triaged issue %d." % issue.id)
+            logbook.info(u"Recording manually triaged %s." % issue)
             # Even if the issue has been manually triaged, we still want to insert a paper trail starting now.
             issue._force_paper_trail = True
 
