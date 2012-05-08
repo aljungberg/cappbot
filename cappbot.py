@@ -483,15 +483,15 @@ class CappBot(object):
 
         self.ensure_referenced_labels_exist()
 
-        self.known_labels = set(label.name for label in self.github.Labels.by_repository(self.repo_user, self.repo_name))
+        self.known_labels = set(label.name for label in self.github.Labels.by_repository(self.repo_user, self.repo_name, per_page=100, all_pages=True))
 
         # Everyone who's a collborator automatically has permissions to do everything.
-        self.collaborator_logins = set(c.login for c in self.github.Collaborators.by_repository(self.repo_user, self.repo_name))
+        self.collaborator_logins = set(c.login for c in self.github.Collaborators.by_repository(self.repo_user, self.repo_name, per_page=100, all_pages=True))
         for login in self.collaborator_logins:
             self.settings.PERMISSIONS[login] = ['labels', 'assignee', 'milestone']
 
         # Find all issues.
-        issues = self.github.Issues.by_repository_all(self.repo_user, self.repo_name)
+        issues = self.github.Issues.by_repository_all(self.repo_user, self.repo_name, per_page=100, all_pages=True)
 
         logbook.info("Found %d issue(s)." % len(issues))
 
