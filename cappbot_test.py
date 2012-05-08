@@ -46,7 +46,7 @@ class TestCappBot(unittest.TestCase):
         self.settings = imp.load_source('settings', 'default_settings.py')
         self.settings.GITHUB_REPOSITORY = "alice_tester/blox"
         self.settings.PERMISSIONS['bob'] = ['labels']
-        self.database = {}
+        self.database = {'first_run': '2012-01-01T22:06:51Z'}
         self.cappbot = CappBot(self.settings, self.database)
         # Replace the GitHub API with a mock.
         self.cappbot.github = Mock(spec=self.cappbot.github)

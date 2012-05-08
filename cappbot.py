@@ -61,12 +61,15 @@ Perform various automation and paper trail functionality on GitHub issues to aug
 
 from operator import attrgetter
 import argparse
+import datetime
 import imp
 import json
 import logbook
 import os
 import re
 import sys
+
+import iso8601
 
 from mini_github3 import GitHub
 
@@ -115,6 +118,12 @@ class CappBot(object):
         if not self.has_seen_issue(issue):
             return None
         return self.database['issues'][unicode(issue.id)].get('updated_at')
+
+    def get_first_run_date(self):
+        if not self.database.get('first_run'):
+            self.database['first_run'] = datetime.datetime.now().isoformat()
+        return iso8601.parse_date(self.database['first_run'])
+    first_run_date = property(get_first_run_date)
 
     def record_issue(self, issue):
         """Record the information we need to detect whether an issue has been changed."""
@@ -388,6 +397,11 @@ class CappBot(object):
 
         issue._should_ignore = False
         issue._force_paper_trail = False
+
+        if self.settings.IGNORE_CLOSED_ISSUES_NOT_UPDATED_SINCE_FIRST_RUN and issue.state == 'closed' and iso8601.parse_date(issue.updated_at) < self.first_run_date:
+            logbook.debug("Issue %d has been closed since %s, before first run at %s. Ignoring." % (issue.number, issue.updated_at, self.first_run_date.isoformat()))
+            issue._should_ignore = True
+            return
 
         if self.has_seen_issue(issue) and self.last_seen_issue_update(issue) == issue.updated_at and not self.get_issue_changes(issue):
             # Note that we need to check both get_issue_changes and updated_at. The updated_at field doesn't update for every

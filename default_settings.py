@@ -4,8 +4,14 @@ GITHUB_USER = "cappbot"
 GITHUB_TOKEN = ""
 GITHUB_REPOSITORY = "cappuccino/cappuccino"
 
-DATABASE = "cappbot-cappuccino-db.json"
+DATABASE = "cappbot-%s-db.json" % GITHUB_REPOSITORY.replace('/', '-')
 
+# Ignore all closed issues not updated since before the CappBot database was
+# created. This will prevent CappBot from causing a flood of needless
+# notifications by addings its paper trail to issues long finished on its
+# first run. If one of these issues later is reopened or otherwise updated
+# CappBot will work with them.
+IGNORE_CLOSED_ISSUES_NOT_UPDATED_SINCE_FIRST_RUN = True
 
 ## Issue Life Cycle ##
 
