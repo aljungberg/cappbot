@@ -44,6 +44,13 @@ class GitHubRemoteObject(RemoteObject):
 
         return request
 
+    def update_from_response(self, url, response, content):
+        r = super(RemoteObject, self).update_from_response(url, response, content)
+
+        self._rate_limit = (response.get('x-ratelimit-remaining'), response.get('x-ratelimit-limit'))
+
+        return r
+
     def patch(self, http=None, **kwargs):
         """Remotely alter a previously requested `RemoteObject` through an HTTP ``PATCH`` request.
 
@@ -69,10 +76,16 @@ class GitHubRemoteObject(RemoteObject):
 
         self.update_from_response(location, response, content)
 
+    def get_rate_limit_remaining(self):
+        r = getattr(self, '_rate_limit', (None, None))[0]
+        return int(r) if not r is None else None
+
 
 class GitHubRemoteListObject(ListObject, GitHubRemoteObject):
     def update_from_response(self, url, response, content):
         r = super(GitHubRemoteObject, self).update_from_response(url, response, content)
+
+        self._rate_limit = (response.get('x-ratelimit-remaining'), response.get('x-ratelimit-limit'))
 
         # GitHub sends paging information as a response header like this:
         # <https://api.github.com/repos/cappuccino/cappuccino/issues?page=2&state=open>; rel="next", <https://api.github.com/repos/cappuccino/cappuccino/issues?page=11&state=open>; rel="last"
