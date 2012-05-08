@@ -105,6 +105,16 @@ class CappBot(object):
 
         return 'issues' in db and db['issues'].get(unicode(issue.id)) is not None
 
+    def last_seen_issue_update(self, issue):
+        """Return the last seen updated_at time in YYYY-MM-DDTHH:MM:SSZ string format.
+
+        """
+
+        if not self.has_seen_issue(issue):
+            return None
+        return self.database['issues'][unicode(issue.id)].get('updated_at')
+
+
     def record_issue(self, issue):
         """Record the information we need to detect whether an issue has been changed."""
 
@@ -120,6 +130,7 @@ class CappBot(object):
             'milestone_number': int(issue.milestone.number) if issue.milestone else None,
             'assignee_id': int(issue.assignee.id) if issue.assignee else None,
             'labels': sorted(label.name for label in issue.labels),
+            'updated_at': issue.updated_at  # (as a string)
         }
 
         # Note we need to use string keys for our JSON database's sake.
@@ -132,7 +143,10 @@ class CappBot(object):
             db['issues'][key] = db_issue
 
     def record_latest_seen_comment(self, issue):
-        """Record the id of the newest comment so we can recognise new comments in the future."""
+        """Record the id of the newest comment so we can recognise new comments in the future,
+        and the time of the last update so that we can skip
+
+        """
 
         db = self.database
 
@@ -270,7 +284,7 @@ class CappBot(object):
         new_comments = self.get_new_comments(issue)
         labels = labels[:]
 
-        logbook.debug(u"Examining %d new comments for %s" % (len(new_comments), issue))
+        logbook.debug(u"Examining %d new comment(s) for %s" % (len(new_comments), issue))
 
         for comment in new_comments:
             if not comment.body:
@@ -373,6 +387,13 @@ class CappBot(object):
         issue._should_ignore = False
         issue._force_paper_trail = False
 
+        if self.last_seen_issue_update(issue) == issue.updated_at:
+            logbook.debug("Issue %d has not changed since last seen update at %s. Ignoring." % (issue.number, issue.updated_at))
+            # The important part here is that we don't download the Comments. Downloading all the comments for every
+            # issue, on every run, is not very efficient.
+            issue._should_ignore = True
+            return
+
         # We'll need this now or later, or both.
         issue._comments = self.github.Comments.by_issue(issue, per_page=100, all_pages=True)
 
@@ -411,6 +432,11 @@ class CappBot(object):
         changes = self.get_issue_changes(issue)
 
         if not changes:
+            # Make sure we capture the update time so we don't need to run the expensive
+            # comments check again in the future while this issue remains unchanged.
+            if self.last_seen_issue_update(issue) is None:
+                self.record_issue(issue)
+
             logbook.debug(u"No changes for %s" % issue)
             return
 
