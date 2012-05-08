@@ -68,6 +68,7 @@ import logbook
 import os
 import re
 import sys
+import time
 
 import iso8601
 
@@ -389,6 +390,15 @@ class CappBot(object):
         for label in defs.get('labels', []):
             self.github.Labels.get_or_create_in_repository(self.repo_user, self.repo_name, label)
 
+    def delay_after_update(self):
+        """Cause a delay after each paper trail message is posted to limit the maximum rate of
+        paper trail messages per minute.
+
+        """
+
+        if self.settings.UPDATE_DELAY:
+            time.sleep(self.settings.UPDATE_DELAY)
+
     def check_prepare_issue(self, issue):
         """Phase 1 issue work: record new issues, install issue defaults, mark déjà vu issues,
         and retrieve the issue comments.
@@ -414,6 +424,16 @@ class CappBot(object):
 
         # We'll need this now or later, or both.
         issue._comments = self.github.Comments.by_issue(issue, per_page=100, all_pages=True)
+
+        if self.settings.AVOID_RATE_LIMIT:
+            remaining = issue._comments.get_rate_limit_remaining()
+
+            # Remaining will be None if the 'empty comments' optimisation kicked in.
+            if not remaining is None:
+                delay = 3600.0 / max(1, remaining)
+                if delay > 1:
+                    logbook.debug("Approaching rate limit (%d requests remaining). Sleeping for %.1fs." % (remaining, delay))
+                    time.sleep(delay)
 
         if self.has_seen_issue(issue):
             # It's not a new issue if we have recorded it previously.
@@ -512,6 +532,7 @@ class CappBot(object):
             if not self.dry_run:
                 issue._comments.post(comment)
                 self.record_latest_seen_comment(issue)
+                self.delay_after_update()
 
             # Close the issue after leaving the paper trail. It looks more natural.
             if self.should_close_issue and issue.state != 'closed':

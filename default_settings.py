@@ -13,6 +13,16 @@ DATABASE = "cappbot-%s-db.json" % GITHUB_REPOSITORY.replace('/', '-')
 # CappBot will work with them.
 IGNORE_CLOSED_ISSUES_NOT_UPDATED_SINCE_FIRST_RUN = True
 
+# If True, if the remaining rate limit drops below 3600, CappBot will wait
+# (1.0 / remaining_limit) at the beginning of handling a new issue.
+AVOID_RATE_LIMIT = True
+
+# Wait this many seconds after each update. This is separate and in addition
+# to any delay caused by AVOID_RATE_LIMIT. The purpose of UPDATE_DELAY is to
+# limit the maximum trouble per hour caused by CappBot if some bug causes it
+# to post over and over to the same issue.
+UPDATE_DELAY = 10
+
 ## Issue Life Cycle ##
 
 # Defaults to set on new (not yet triaged) issues.
