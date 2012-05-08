@@ -1,0 +1,6 @@
+Logbook==0.3
+httplib2==0.7.4
+iso8601==0.1.4
+remoteobjects==1.1.1
+simplejson==2.5.0
+wsgiref==0.1.2
