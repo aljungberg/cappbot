@@ -374,7 +374,7 @@ class CappBot(object):
         issue._force_paper_trail = False
 
         # We'll need this now or later, or both.
-        issue._comments = self.github.Comments.by_issue(issue)
+        issue._comments = self.github.Comments.by_issue(issue, per_page=100, all_pages=True)
 
         if self.has_seen_issue(issue):
             # It's not a new issue if we have recorded it previously.

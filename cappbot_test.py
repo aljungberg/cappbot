@@ -157,7 +157,7 @@ class TestCappBot(unittest.TestCase):
             issue.comments = len(issue._mock_comments)
             install_list_post_patch(issue._mock_comments)
 
-        def get_comments(issue):
+        def get_comments(issue, **kwargs):
             return issue._mock_comments
 
         self.cappbot.github.Comments.by_issue = Mock(side_effect=get_comments)
