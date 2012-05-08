@@ -107,13 +107,14 @@ class CappBot(object):
 
     def last_seen_issue_update(self, issue):
         """Return the last seen updated_at time in YYYY-MM-DDTHH:MM:SSZ string format.
+        Note that updated_at might only change when there is a new comment. It does not
+        seem to change when there is a new label.
 
         """
 
         if not self.has_seen_issue(issue):
             return None
         return self.database['issues'][unicode(issue.id)].get('updated_at')
-
 
     def record_issue(self, issue):
         """Record the information we need to detect whether an issue has been changed."""
@@ -159,7 +160,7 @@ class CappBot(object):
         record = self.database['issues'][unicode(issue.id)]
 
         r = set()
-        if record['labels'] != sorted(label.name for label in issue.labels):
+        if set(record['labels']) != set(label.name for label in issue.labels):
             r.add('labels')
 
         if record['assignee_id'] != (int(issue.assignee.id) if issue.assignee else None):
@@ -168,7 +169,8 @@ class CappBot(object):
         if record['milestone_number'] != (int(issue.milestone.number) if issue.milestone else None):
             r.add('milestone')
 
-        if issue.comments and (record['latest_seen_comment_id'] is None or record['latest_seen_comment_id'] != int(issue._comments[-1].id)):
+        # _comments might not have been loaded yet in which case we can't detect changes there.
+        if hasattr(issue, '_comments') and issue.comments and (record['latest_seen_comment_id'] is None or record['latest_seen_comment_id'] != int(issue._comments[-1].id)):
             r.add('comments')
 
         if issue._force_paper_trail:
@@ -387,7 +389,9 @@ class CappBot(object):
         issue._should_ignore = False
         issue._force_paper_trail = False
 
-        if self.last_seen_issue_update(issue) == issue.updated_at:
+        if self.has_seen_issue(issue) and self.last_seen_issue_update(issue) == issue.updated_at and not self.get_issue_changes(issue):
+            # Note that we need to check both get_issue_changes and updated_at. The updated_at field doesn't update for every
+            # change, but it does update for comment changes which is what we need.
             logbook.debug("Issue %d has not changed since last seen update at %s. Ignoring." % (issue.number, issue.updated_at))
             # The important part here is that we don't download the Comments. Downloading all the comments for every
             # issue, on every run, is not very efficient.
