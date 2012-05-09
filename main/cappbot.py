@@ -89,12 +89,13 @@ def is_issue_new(issue):
 
 
 class CappBot(object):
-    def __init__(self, settings, database, dry_run=False):
+    def __init__(self, settings, database, dry_run=False, memorise_forgotten=False):
         self.settings = settings
         self.github = GitHub(api_token=settings.GITHUB_TOKEN)
         self.repo_user, self.repo_name = settings.GITHUB_REPOSITORY.split("/")
         self.database = database
         self.dry_run = dry_run
+        self.memorise_forgotten = memorise_forgotten
 
     def get_current_user(self):
         if not getattr(self, '_current_user', None):
@@ -446,6 +447,14 @@ class CappBot(object):
         # Check for comments we've made to this issue previously. Any such comment would indicate
         # there's a problem since we believe !has_seen_issue(issue).
         if self.did_comment_on(issue):
+            if self.memorise_forgotten:
+                logbook.warning(u"Déjà vu: it looks like CappBot has interacted with %s but it's not in the database. Recording it now." % issue)
+                self.record_issue(issue)
+                self.recount_votes(issue)
+                self.record_latest_seen_comment(issue)
+                issue._should_ignore = True
+                return
+
             logbook.warning(u"Déjà vu: it looks like CappBot has interacted with %s but it's not in the database. Ignoring the issue." % issue)
             issue._should_ignore = True
             return
@@ -606,6 +615,8 @@ if __name__ == '__main__':
         help='file to log to (default: stderr)')
     parser.add_argument('-v', '--verbose', action='append_const', const=True,
         help='use verbose logging, use twice for debug logging')
+    parser.add_argument('--memorise-forgotten', action='store_true', default=False, dest='memorise_forgotten',
+        help='in case of déjà vu, record the issue as fully up to date')
 
     args = parser.parse_args()
 
@@ -629,7 +640,7 @@ if __name__ == '__main__':
         with logbook.StreamHandler(args.log, level=log_level, bubble=False) as log_handler:
             with log_handler.applicationbound():
                 try:
-                    CappBot(settings, database, dry_run=args.dry_run).run()
+                    CappBot(settings, database, dry_run=args.dry_run, memorise_forgotten=args.memorise_forgotten).run()
                 finally:
                     if not args.dry_run:
                         with open(settings.DATABASE, 'wb') as f:
