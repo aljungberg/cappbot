@@ -382,7 +382,7 @@ class Comments(GitHubRemoteListObject):
 
         # Don't request the list of comments if we know there should be 0.
         if issue.comments == 0:
-            comments = cls()
+            comments = cls(entries=[])
             comments._location = '%s/comments' % issue.url
             return comments
 
