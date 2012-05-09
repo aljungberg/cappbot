@@ -535,7 +535,7 @@ class CappBot(object):
                 try:
                     issue.patch(title=issue_title)
                 except:
-                    logbook.error(u"Unable to set %is title to %s" % (issue, issue_title))
+                    logbook.error(u"Unable to set the title of %s to %s" % (issue, issue_title))
                     raise
 
         if new_labels != original_labels:
