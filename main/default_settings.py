@@ -165,6 +165,8 @@ def getWhatsNextMessage(assignee, milestone, labels):
         return "The changes for this issue are ready to be committed by %s." % (who or "a member of the core team")
     needs = [label for label in labels if label.startswith('#needs') and label in LABEL_EXPLANATIONS]
     if needs:
+        if len(needs) == 1:
+            return LABEL_EXPLANATIONS[needs[0]]
         return '\n\n * %s' % ('\n * '.join(LABEL_EXPLANATIONS[label] for label in needs))
 
     return "A reviewer should examine this issue."
