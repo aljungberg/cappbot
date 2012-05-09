@@ -89,13 +89,14 @@ def is_issue_new(issue):
 
 
 class CappBot(object):
-    def __init__(self, settings, database, dry_run=False, memorise_forgotten=False):
+    def __init__(self, settings, database, dry_run=False, memorise_forgotten=False, ignore=None):
         self.settings = settings
         self.github = GitHub(api_token=settings.GITHUB_TOKEN)
         self.repo_user, self.repo_name = settings.GITHUB_REPOSITORY.split("/")
         self.database = database
         self.dry_run = dry_run
         self.memorise_forgotten = memorise_forgotten
+        self.ignore = set(ignore) if ignore else set()
 
     def get_current_user(self):
         if not getattr(self, '_current_user', None):
@@ -595,11 +596,13 @@ class CappBot(object):
 
         # Phase 1: check, prepare and record issues.
         for issue in issues:
+            if issue.number in self.ignore:
+                continue
             self.check_prepare_issue(issue)
 
         # Phase 2: react to changed issues.
         for issue in issues:
-            if issue._should_ignore:
+            if issue.number in self.ignore or issue._should_ignore:
                 continue
 
             self.handle_issue_changes(issue)
@@ -617,6 +620,8 @@ if __name__ == '__main__':
         help='use verbose logging, use twice for debug logging')
     parser.add_argument('--memorise-forgotten', action='store_true', default=False, dest='memorise_forgotten',
         help='in case of déjà vu, record the issue as fully up to date')
+    parser.add_argument('--ignore', metavar='NUMBER', action='append',
+        help='complete ignore issue NUMBER during this run. Can be specified multiple times.')
 
     args = parser.parse_args()
 
@@ -640,7 +645,7 @@ if __name__ == '__main__':
         with logbook.StreamHandler(args.log, level=log_level, bubble=False) as log_handler:
             with log_handler.applicationbound():
                 try:
-                    CappBot(settings, database, dry_run=args.dry_run, memorise_forgotten=args.memorise_forgotten).run()
+                    CappBot(settings, database, dry_run=args.dry_run, memorise_forgotten=args.memorise_forgotten, ignore=[int(n) for n in args.ignore] if args.ignore else []).run()
                 finally:
                     if not args.dry_run:
                         with open(settings.DATABASE, 'wb') as f:
