@@ -79,7 +79,11 @@ class GitHubRemoteObject(RemoteObject):
 
         # print body, response, content
 
-        self.update_from_response(location, response, content)
+        try:
+            self.update_from_response(location, response, content)
+        except:
+            logbook.error(u"Failed patch request: %r" % request)
+            raise
 
     def get_rate_limit_remaining(self):
         r = getattr(self, '_rate_limit', (None, None))[0]
