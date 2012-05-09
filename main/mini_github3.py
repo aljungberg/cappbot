@@ -25,6 +25,7 @@ from urlparse import urljoin
 import argparse
 import httplib2
 import json
+import logbook
 import urllib
 import urlparse
 
@@ -45,7 +46,11 @@ class GitHubRemoteObject(RemoteObject):
         return request
 
     def update_from_response(self, url, response, content):
-        r = super(RemoteObject, self).update_from_response(url, response, content)
+        try:
+            r = super(RemoteObject, self).update_from_response(url, response, content)
+        except:
+            logbook.error("Received error response: %r, %s" % (response, content))
+            raise
 
         self._rate_limit = (response.get('x-ratelimit-remaining'), response.get('x-ratelimit-limit'))
 
