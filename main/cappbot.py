@@ -593,6 +593,12 @@ if __name__ == '__main__':
     else:
         database = {}
 
+    # Write to the database immediately to verify we have write permission and disk space.
+    # We don't want to find out that there is a problem at the end and lose all the data.
+    if not args.dry_run:
+        with open(settings.DATABASE, 'wb') as f:
+            json.dump(database, f, indent=2)
+
     log_level = (logbook.WARNING, logbook.INFO, logbook.DEBUG)[min(2, len(args.verbose or []))]
     null_handler = logbook.NullHandler()
     with null_handler.applicationbound():
