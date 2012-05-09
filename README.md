@@ -23,6 +23,11 @@ Perform various automation and paper trail functionality on GitHub issues to aug
 Installation
 ------------
 
+The recommended way to use CappBot is within `virtualenv` (and this is probably the best way to run server side Python software in general.)
+
+    curl -O https://raw.github.com/pypa/virtualenv/master/virtualenv.py
+    python virtualenv.py cappbot_env
+    . cappbot_env/bin/activate
     pip install -r requirements.txt
     cp main/settings-sample.py settings.py
     # edit settings.py
@@ -31,3 +36,10 @@ Usage
 -----
 
 See `python main/cappbot.py --help`.
+
+Running the Unit Tests
+----------------------
+
+    pip install mock  # an extra requirement only when running the unit tests.
+    cd main
+    python -m unittest cappbot_test
