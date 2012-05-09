@@ -49,7 +49,7 @@ class GitHubRemoteObject(RemoteObject):
         try:
             r = super(RemoteObject, self).update_from_response(url, response, content)
         except:
-            logbook.error("Received error response: %r, %s" % (response, content))
+            logbook.error(u"Received error response: %r, %s" % (response, content))
             raise
 
         self._rate_limit = (response.get('x-ratelimit-remaining'), response.get('x-ratelimit-limit'))

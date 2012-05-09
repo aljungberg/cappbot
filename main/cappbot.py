@@ -208,7 +208,11 @@ class CappBot(object):
 
         if len(patch):
             if not self.dry_run:
-                issue.patch(**patch)
+                try:
+                    issue.patch(**patch)
+                except:
+                    logbook.error(u"Unable to change issue %s with attributes %r" % (issue, patch))
+                    raise
             logbook.info(u"Installed defaults %r for issue %s." % (patch, issue))
 
     def get_new_comments(self, issue):
@@ -494,7 +498,11 @@ class CappBot(object):
         new_labels = self.altered_labels_per_removal_rules(issue, new_labels)
 
         if set(new_labels) != set(original_labels) and not self.dry_run:
-            issue.patch(labels=sorted(map(unicode, new_labels)))
+            try:
+                issue.patch(labels=sorted(map(unicode, new_labels)))
+            except:
+                logbook.error(u"Unable to set %s labels to %s" % (issue, sorted(map(unicode, new_labels))))
+                raise
 
         # Post paper trail.
         changes = changes.difference(set(['comments']))
@@ -514,7 +522,11 @@ class CappBot(object):
                 logbook.info(u"Clearing vote from title of %s: '%s'" % (issue, issue_title))
 
             if not self.dry_run:
-                issue.patch(title=issue_title)
+                try:
+                    issue.patch(title=issue_title)
+                except:
+                    logbook.error(u"Unable to set %is title to %s" % (issue, issue_title))
+                    raise
 
         if new_labels != original_labels:
             changes.add('labels')
@@ -523,14 +535,22 @@ class CappBot(object):
             if self.should_open_issue and issue.state != 'open':
                 logbook.info(u'Reopening %s due to label %s being removed' % (issue, self.should_open_issue))
                 if not self.dry_run:
-                    issue.patch(state="open")
+                    try:
+                        issue.patch(state="open")
+                    except:
+                        logbook.error(u"Unable to open %s" % issue)
+                        raise
 
             msg = self.settings.getPaperTrailMessage(issue.assignee.login if issue.assignee else None, issue.milestone.title if issue.milestone else None, new_labels, self.get_vote_count(issue))
             comment = self.github.Comment()
             comment.body = msg
             logbook.info(u"Adding paper trail for %s (changes: %s): '%s'" % (issue, ", ".join(changes), msg))
             if not self.dry_run:
-                issue._comments.post(comment)
+                try:
+                    issue._comments.post(comment)
+                except:
+                    logbook.error(u"Unable to comment on %s" % issue)
+                    raise
                 self.record_latest_seen_comment(issue)
                 self.delay_after_update()
 
@@ -538,7 +558,11 @@ class CappBot(object):
             if self.should_close_issue and issue.state != 'closed':
                 logbook.info(u'Closing %s due to label %s being added' % (issue, self.should_close_issue))
                 if not self.dry_run:
-                    issue.patch(state="closed")
+                    try:
+                        issue.patch(state="closed")
+                    except:
+                        logbook.error(u"Unable to close %s" % issue)
+                        raise
 
         # Now record the latest labels etc so we don't react to these same changes the next time.
         self.record_issue(issue)
