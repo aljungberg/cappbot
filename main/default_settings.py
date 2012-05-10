@@ -67,6 +67,12 @@ WHEN_LABEL_REMOVE_LABELS = {
         '#needs-unit-test',
         '#ready-to-commit'
     ],
+
+    # Duplicate is almost like a state label but it's not unreasonable for people to want to
+    # assign both "duplicate" and a state label to an issue so it's not in the exclusive list.
+    '#duplicate': [
+        '#new',
+    ]
 }
 
 # State Labels
@@ -75,7 +81,7 @@ WHEN_LABEL_REMOVE_LABELS = {
 # someone hand editing labels between CappBot runs), labels will be removed
 # arbitrarily to create a valid state.
 MUTUALLY_EXCLUSIVE_LABELS = [
-    '#new', '#accepted', '#wont-fix', '#works-for-me', '#fixed'
+    '#new', '#acknowledged', '#accepted', '#wont-fix', '#works-for-me', '#fixed'
 ]
 
 # If this label is added using a CappBot command, also close the issue.
