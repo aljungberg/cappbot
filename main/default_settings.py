@@ -103,7 +103,7 @@ LABEL_EXPLANATIONS = {
     '#needs-patch':         'This issue needs a volunteer to write and submit code to address it.',
     '#needs-reduction':     'A minimal test app should be created which demonstrates the concern of this issue in isolation.',
     '#needs-unit-test':     'This issue needs a volunteer to write and submit one or more unit tests execercising the changes and/or the relevant parts of the original problem.',
-    '#duplicate':           'This issue duplicates another existing issue. Refer to the original issue for further information.',
+    '#duplicate':           'This issue duplicates another existing issue. Refer to the duplicate issue for further information.',
     '#fixed':               'This issue is considered successfully resolved.',
     '#wont-fix':            'A reviewer or core team member has decided against acting upon this issue.',
     '#works-for-me':        'Attempts to reproduce the problem described by this issue has failed to reveal any erroneous situation.',
