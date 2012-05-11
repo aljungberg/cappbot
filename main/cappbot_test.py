@@ -252,3 +252,11 @@ class TestCappBot(unittest.TestCase):
         ])
 
         self.assertEquals(issues[0]._mock_comments[-1].body, "**What's next?** A reviewer should examine this issue.")
+
+    def test_action_by_comment_case_insensitive(self):
+        issues, labels, milestones = self.configure_github_mock(load_fixture('issues.json')[7:8], load_fixture('labels.json'), [load_fixture('milestone.json')], [[self.fake_comment(self.alice_user, 'Very enhancing.\n\n+foundation')]])
+
+        self.cappbot.run()
+
+        issues[0].patch.assert_has_calls([call(labels=[u'#new'], milestone=2), call(labels=[u'#new', u'Foundation'])])
+        self.assertEquals(issues[0]._mock_comments[-1].body, "**Milestone:** Someday.  **Labels:** #new, Foundation.  **What's next?** A reviewer should examine this issue.")

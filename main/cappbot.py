@@ -253,54 +253,70 @@ class CappBot(object):
     def user_may_alter_labels(self, user):
         return 'labels' in self.settings.PERMISSIONS.get(user.login, ())
 
+    def get_label_by_name(self, aLabel):
+        """Get the label with the proper capitalisation among those available, or None if the label is not available."""
+        aLabel = aLabel.lower()
+        for label in self.known_labels:
+            if label.lower() == aLabel:
+                return label
+        return None
+
     def add_label(self, new_label, labels):
-        if new_label in labels:
+        new_label_proper = self.get_label_by_name(new_label)
+
+        if new_label_proper in labels:
             # Ensure we move this new label to the end of the list. We need to know which
             # label was added last later.
-            labels.remove(new_label)
-        labels.append(new_label)
-        if new_label in self.settings.CLOSE_ISSUE_WHEN_CAPPBOT_ADDS_LABEL or self.should_open_issue is new_label:
+            labels.remove(new_label_proper)
+        labels.append(new_label_proper)
+        if any(l.lower() == new_label_proper.lower() for l in self.settings.CLOSE_ISSUE_WHEN_CAPPBOT_ADDS_LABEL) or self.should_open_issue is new_label_proper:
             self.should_open_issue = False
-            self.should_close_issue = new_label
+            self.should_close_issue = new_label_proper
 
     def add_label_due_to_comment(self, new_label, comment, labels):
-        if not new_label in self.known_labels:
+        new_label_proper = self.get_label_by_name(new_label)
+        if not new_label_proper:
             logbook.info(u'Ignoring unknown label %s in comment %s by %s.' % (new_label, comment.url, comment.user.login))
             self.send_message(comment.user, u'Unknown label', u'(Your comment)[%s] appears to request that the label `%s` is added to the issue but this does not seems to be a valid label.' % (comment.url, new_label))
             return
 
         if not self.user_may_alter_labels(comment.user):
             logbook.warning(u"Ignoring unathorised attempt to alter labels by %s through comment %s." % (comment.user.login, comment.url))
-            self.send_message(comment.user, u'Unable to alter label', u'(Your comment)[%s] appears to request that the label `%s` is added to the issue but you do not have the required authorisation.' % (comment.url, new_label))
+            self.send_message(comment.user, u'Unable to alter label', u'(Your comment)[%s] appears to request that the label `%s` is added to the issue but you do not have the required authorisation.' % (comment.url, new_label_proper))
         else:
-            logbook.info("Adding label %s due to comment %s by %s" % (new_label, comment.url, comment.user.login))
-            self.add_label(new_label, labels)
+            logbook.info("Adding label %s due to comment %s by %s" % (new_label_proper, comment.url, comment.user.login))
+            self.add_label(new_label_proper, labels)
 
     def remove_label(self, remove_label, labels):
-        if not remove_label in labels:
+        remove_label_proper = self.get_label_by_name(remove_label)
+
+        if not remove_label_proper in labels:
             return
 
-        labels.remove(remove_label)
-        if remove_label in self.settings.OPEN_ISSUE_WHEN_CAPPBOT_REMOVES_LABEL or self.should_close_issue is remove_label:
-            self.should_open_issue = remove_label
+        labels.remove(remove_label_proper)
+        if any(l.lower() == remove_label_proper.lower() for l in self.settings.OPEN_ISSUE_WHEN_CAPPBOT_REMOVES_LABEL) or self.should_close_issue is remove_label_proper:
+            self.should_open_issue = remove_label_proper
             self.should_close_issue = False
 
     def remove_label_due_to_comment(self, remove_label, comment, labels):
-        if not remove_label in self.known_labels:
+        remove_label_proper = self.get_label_by_name(remove_label)
+
+        if not remove_label_proper in self.known_labels:
             logbook.info(u'Ignoring unknown label %s in comment %s by %s.' % (remove_label, comment.id, comment.user.login))
             self.send_message(comment.user, u'Unknown label', u'(Your comment)[%s] appears to request that the label `%s` is removed from the issue but this does not seems to be a valid label.' % (comment.url, remove_label))
             return
 
         if not self.user_may_alter_labels(comment.user):
             logbook.warning(u"Ignoring unathorised attempt to alter labels by %s through comment %s." % (comment.user.login, comment.url))
-            self.send_message(comment.user, u'Unable to alter label', u'(Your comment)[%s] appears to request that the label `%s` is removed from the issue but you do not have the required authorisation.' % (comment.url, remove_label))
+            self.send_message(comment.user, u'Unable to alter label', u'(Your comment)[%s] appears to request that the label `%s` is removed from the issue but you do not have the required authorisation.' % (comment.url, remove_label_proper))
         else:
-            logbook.info("Removing label %s due to comment %s by %s" % (remove_label, comment.id, comment.user.login))
-            self.remove_label(remove_label, labels)
+            logbook.info("Removing label %s due to comment %s by %s" % (remove_label_proper, comment.id, comment.user.login))
+            self.remove_label(remove_label_proper, labels)
 
     def altered_labels_by_interpreting_new_comments(self, issue, labels):
         new_comments = self.get_new_comments(issue)
-        labels = labels[:]
+        # Make sure we have the right label capitalisation.
+        labels = [self.get_label_by_name(l) for l in labels]
 
         logbook.debug(u"Examining %d new comment(s) for %s" % (len(new_comments), issue))
 

@@ -2,7 +2,7 @@
       {"color": "fc2929", "url": "https://api.github.com/repos/alice_tester/blox/labels/bug", "name": "bug"},
       {"color": "cccccc", "url": "https://api.github.com/repos/alice_tester/blox/labels/duplicate", "name": "duplicate"},
       {"color": "84b6eb", "url": "https://api.github.com/repos/alice_tester/blox/labels/enhancement", "name": "enhancement"},
-      {"color": "e6e6e6", "url": "https://api.github.com/repos/alice_tester/blox/labels/invalid", "name": "invalid"},
+      {"color": "e6e6e6", "url": "https://api.github.com/repos/alice_tester/blox/labels/foundation", "name": "Foundation"},
       {"color": "cc317c", "url": "https://api.github.com/repos/alice_tester/blox/labels/question", "name": "question"},
       {"color": "ffffff", "url": "https://api.github.com/repos/alice_tester/blox/labels/%23wont-fix", "name": "#wont-fix"},
       {"color": "ffffff", "url": "https://api.github.com/repos/alice_tester/blox/labels/%23fixed", "name": "#fixed"},
