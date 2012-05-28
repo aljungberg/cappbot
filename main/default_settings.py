@@ -112,7 +112,7 @@ LABEL_EXPLANATIONS = {
     '#duplicate':           'This issue duplicates another existing issue. Refer to the duplicate issue for further information.',
     '#fixed':               'This issue is considered successfully resolved.',
     '#wont-fix':            'A reviewer or core team member has decided against acting upon this issue.',
-    '#works-for-me':        'Attempts to reproduce the problem described by this issue has failed to reveal any erroneous situation.',
+    '#works-for-me':        'Attempts to reproduce the problem described by this issue have failed to reveal any erroneous situation.',
     '#new':                 'A reviewer should examine this issue.',
     '#accepted':            'This issue has been confirmed but needs further review.',
 }
