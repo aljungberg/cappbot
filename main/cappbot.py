@@ -594,7 +594,7 @@ class CappBot(object):
         self.record_issue(issue)
 
     def run(self):
-        logbook.info("Logged in as %s." % self.current_user.login)
+        logbook.debug("Logged in as %s." % self.current_user.login)
 
         self.ensure_referenced_labels_exist()
 
@@ -608,7 +608,7 @@ class CappBot(object):
         # Find all issues.
         issues = self.github.Issues.by_repository_all(self.repo_user, self.repo_name, per_page=100, all_pages=True)
 
-        logbook.info("Found %d issue(s)." % len(issues))
+        logbook.debug("Found %d issue(s)." % len(issues))
 
         # Phase 1: check, prepare and record issues.
         for issue in issues:
