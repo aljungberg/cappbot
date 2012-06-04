@@ -642,7 +642,7 @@ class CappBot(object):
                     milestone = self.github.Milestones.get_or_create_in_repository(self.repo_user, self.repo_name, issue_working_state['milestone'])
                     issue.patch(milestone=milestone.number)
                 except:
-                    logbook.error(u"Unable to set %s milestone to %s" % (issue, milestone))
+                    logbook.error(u"Unable to set %s milestone to %s" % (issue, issue_working_state['milestone']))
                     raise
 
         if issue_working_state['assignee'] != get_user_login(issue.assignee):
@@ -651,7 +651,7 @@ class CappBot(object):
                 try:
                     issue.patch(assignee=issue_working_state['assignee'])
                 except:
-                    logbook.error(u"Unable to set %s assignee to %s" % (issue, milestone))
+                    logbook.error(u"Unable to set %s assignee to %s" % (issue, issue_working_state['assignee']))
                     raise
 
         # Post paper trail.
