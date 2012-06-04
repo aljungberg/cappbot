@@ -319,15 +319,25 @@ class Milestones(GitHubRemoteListObject):
         return self.entries.__getitem__(key)
 
     @classmethod
-    def by_repository(cls, user_name, repo_name, **kwargs):
+    def by_repository(cls, user_name, repo_name, state='open', **kwargs):
         """Get milestones by repository.
 
         `GET /repos/:user/:repo/milestones`
 
         """
 
-        url = '/repos/%s/%s/milestones' % (user_name, repo_name)
+        url = '/repos/%s/%s/milestones?state=%s' % (user_name, repo_name, state)
         return cls.get(urljoin(GitHub.endpoint, url), **kwargs)
+
+    @classmethod
+    def by_repository_all(cls, user_name, repo_name, state='open', **kwargs):
+        """Get all milestones by repository (open and closed)."""
+
+        open_milestones = cls.by_repository(user_name, repo_name, state='open', **kwargs)
+        closed_milestones = cls.by_repository(user_name, repo_name, state='closed', **kwargs)
+
+        open_milestones.entries.extend(closed_milestones.entries)
+        return open_milestones
 
     @classmethod
     def get_or_create_in_repository(cls, user_name, repo_name, milestone_title):

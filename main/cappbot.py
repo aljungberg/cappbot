@@ -742,7 +742,7 @@ class CappBot(object):
 
         self.known_labels = set(label.name for label in self.github.Labels.by_repository(self.repo_user, self.repo_name, per_page=100, all_pages=True))
 
-        self.known_milestones = set(milestone.title for milestone in self.github.Milestones.by_repository(self.repo_user, self.repo_name, per_page=100, all_pages=True))
+        self.known_milestones = set(milestone.title for milestone in self.github.Milestones.by_repository_all(self.repo_user, self.repo_name, per_page=100, all_pages=True))
 
         # Everyone who's a collborator automatically has permissions to do everything.
         self.collaborator_logins = set(c.login for c in self.github.Collaborators.by_repository(self.repo_user, self.repo_name, per_page=100, all_pages=True))
