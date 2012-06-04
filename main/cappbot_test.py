@@ -114,7 +114,7 @@ class TestCappBot(unittest.TestCase):
                 for k, v in kwargs.items():
                     # When you patch a milestone in GitHub V3 you send a numeric id but receive back a full
                     # milestone object.
-                    if k == 'milestone':
+                    if k == 'milestone' and v is not None:
                         new_v = first(milestone for milestone in milestones if milestone.number == v)
                         if not new_v:
                             raise Exception("mock patch: no such milestone %s" % v)
@@ -289,14 +289,30 @@ class TestCappBot(unittest.TestCase):
         issues[0].patch.assert_has_calls([call(labels=[u'#new'], milestone=2)])
         self.assertEquals(issues[0]._mock_comments[-1].body, """**Milestone:** Someday.  **Label:** #new.  **What's next?** A reviewer should examine this issue.""")
 
-    def test_action_by_comment_assignee(self):
+    def test_action_by_comment_clear_milestone(self):
         # Milestones can have all kinds of funny characters.
+        issues, labels, milestones = self.configure_github_mock(load_fixture('issues.json')[7:8], load_fixture('labels.json'), load_fixture('milestones.json'), [[self.fake_comment(self.alice_user, '''This will never make it into Someday.\n\nmilestone=''')]])
+
+        self.cappbot.run()
+
+        issues[0].patch.assert_has_calls([call(labels=[u'#new'], milestone=2), call(milestone=None)])
+        self.assertEquals(issues[0]._mock_comments[-1].body, """**Label:** #new.  **What's next?** A reviewer should examine this issue.""")
+
+    def test_action_by_comment_assignee(self):
         issues, labels, milestones = self.configure_github_mock(load_fixture('issues.json')[7:8], load_fixture('labels.json'), load_fixture('milestones.json'), [[self.fake_comment(self.alice_user, '''Very enhancing.\n\nassignee=alice_tester''')]])
 
         self.cappbot.run()
 
         issues[0].patch.assert_has_calls([call(labels=[u'#new'], milestone=2), call(assignee='alice_tester')])
         self.assertEquals(issues[0]._mock_comments[-1].body, """**Assignee:** [alice_tester](https://github.com/alice_tester).  **Milestone:** Someday.  **Label:** #new.  **What's next?** A reviewer should examine this issue.""")
+
+    def test_action_by_comment_clear_assignee(self):
+        issues, labels, milestones = self.configure_github_mock(load_fixture('issues.json')[7:8], load_fixture('labels.json'), load_fixture('milestones.json'), [[self.fake_comment(self.alice_user, '''I'll do it.\n\nassignee=alice_tester'''), self.fake_comment(self.alice_user, '''Or maybe not.\n\nassignee=''')]])
+
+        self.cappbot.run()
+
+        issues[0].patch.assert_has_calls([call(labels=[u'#new'], milestone=2)])
+        self.assertEquals(issues[0]._mock_comments[-1].body, """**Milestone:** Someday.  **Label:** #new.  **What's next?** A reviewer should examine this issue.""")
 
     def test_action_by_comment_assignee_unauthorised(self):
         issues, labels, milestones = self.configure_github_mock(load_fixture('issues.json')[7:8], load_fixture('labels.json'), load_fixture('milestones.json'), [[self.fake_comment(self.chuck_user, '''I am Chuck and I change this assignee.\n\nassignee=alice_tester''')]])

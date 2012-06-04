@@ -76,8 +76,8 @@ from mini_github3 import GitHub
 
 ADD_LABEL_REGEX = re.compile(r'^\+([-\w\d _#]*[-\w\d_#]+)$|^(#[-\w\d _#]*[-\w\d_#]+)$')
 REMOVE_LABEL_REGEX = re.compile(r'^-([-\w\d _#]*[-\w\d_#]+)$')
-SET_MILESTONE_REGEX = re.compile(r'^milestone=(.+)$')  # Assume pretty much any character is valid in a milestone title.
-SET_ASSIGNEE_REGEX = re.compile(r'^assignee=([-\w\d_#]+)$')
+SET_MILESTONE_REGEX = re.compile(r'^milestone=(.*)$')  # Assume pretty much any character is valid in a milestone title.
+SET_ASSIGNEE_REGEX = re.compile(r'^assignee=([-\w\d_#]*)$')
 
 VOTE_REGEX = re.compile(r'^[-\+][01]$')
 
@@ -281,6 +281,10 @@ class CappBot(object):
 
     def get_milestone_title_by_title(self, aMilestone):
         """Get the milestone title with the proper capitalisation among those available, or None if the milestone is not available."""
+
+        if not aMilestone or not aMilestone.strip():
+            return None
+
         aMilestone = aMilestone.lower()
         for milestone in self.known_milestones:
             if milestone.lower() == aMilestone:
@@ -293,6 +297,9 @@ class CappBot(object):
         Note that only repository collaborators can become assigned to an issue.
 
         """
+
+        if not anAssignee or not anAssignee.strip():
+            return None
 
         anAssignee = anAssignee.lower()
         for assignee in self.collaborator_logins:
@@ -361,12 +368,16 @@ class CappBot(object):
         issue_working_state['milestone'] = new_milestone_proper
 
     def set_milestone_due_to_comment(self, new_milestone, comment, issue_working_state):
-        new_milestone_proper = self.get_milestone_title_by_title(new_milestone)
+        if new_milestone:
+            new_milestone_proper = self.get_milestone_title_by_title(new_milestone)
 
-        if not new_milestone_proper:
-            logbook.info(u'Ignoring unknown milestone %s in comment %s by %s.' % (new_milestone, comment.id, comment.user.login))
-            self.send_message(comment.user, u'Unknown milestone', u'(Your comment)[%s] appears to request that the milestone `%s` is set for the issue but this does not seems to be a valid milestone.' % (comment.url, new_milestone))
-            return
+            if not new_milestone_proper:
+                logbook.info(u'Ignoring unknown milestone %s in comment %s by %s.' % (new_milestone, comment.id, comment.user.login))
+                self.send_message(comment.user, u'Unknown milestone', u'(Your comment)[%s] appears to request that the milestone `%s` is set for the issue but this does not seems to be a valid milestone.' % (comment.url, new_milestone))
+                return
+        else:
+            # You can clear the milestone.
+            new_milestone_proper = None
 
         if not self.user_may_set_milestone(comment.user):
             logbook.warning(u"Ignoring unathorised attempt to alter milestone by %s through comment %s." % (comment.user.login, comment.url))
@@ -384,12 +395,16 @@ class CappBot(object):
         issue_working_state['assignee'] = new_assignee_proper
 
     def set_assignee_due_to_comment(self, new_assignee, comment, issue_working_state):
-        new_assignee_proper = self.get_assignee_login_by_name(new_assignee)
+        if new_assignee:
+            new_assignee_proper = self.get_assignee_login_by_name(new_assignee)
 
-        if not new_assignee_proper:
-            logbook.info(u'Ignoring unknown assignee %s in comment %s by %s.' % (new_assignee, comment.id, comment.user.login))
-            self.send_message(comment.user, u'Unknown assignee', u'(Your comment)[%s] appears to request that the assignee `%s` is set for the issue but this does not seems to be a repository collaborator.' % (comment.url, new_assignee))
-            return
+            if not new_assignee_proper:
+                logbook.info(u'Ignoring unknown assignee %s in comment %s by %s.' % (new_assignee, comment.id, comment.user.login))
+                self.send_message(comment.user, u'Unknown assignee', u'(Your comment)[%s] appears to request that the assignee `%s` is set for the issue but this does not seems to be a repository collaborator.' % (comment.url, new_assignee))
+                return
+        else:
+            # You can clear the assignee.
+            new_assignee_proper = None
 
         if not self.user_may_set_assignee(comment.user):
             logbook.warning(u"Ignoring unathorised attempt to alter assignee by %s through comment %s." % (comment.user.login, comment.url))
@@ -640,7 +655,7 @@ class CappBot(object):
             if not self.dry_run:
                 try:
                     milestone = self.github.Milestones.get_or_create_in_repository(self.repo_user, self.repo_name, issue_working_state['milestone'])
-                    issue.patch(milestone=milestone.number)
+                    issue.patch(milestone=milestone.number if milestone else None)
                 except:
                     logbook.error(u"Unable to set %s milestone to %s" % (issue, issue_working_state['milestone']))
                     raise

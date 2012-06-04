@@ -331,6 +331,9 @@ class Milestones(GitHubRemoteListObject):
 
     @classmethod
     def get_or_create_in_repository(cls, user_name, repo_name, milestone_title):
+        if milestone_title is None:
+            return None
+
         milestones = cls.by_repository(user_name, repo_name, per_page=100, all_pages=True)
         for milestone in milestones:
             if milestone.title == milestone_title:
