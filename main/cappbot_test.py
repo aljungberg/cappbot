@@ -102,7 +102,8 @@ class TestCappBot(unittest.TestCase):
         issues = mini_github3.Issues.from_dict(issues)
         labels = mini_github3.Labels.from_dict(labels)
         milestones = mini_github3.Milestones.from_dict(milestones)
-        collaborators = mini_github3.Collaborators.from_dict([{'login': login} for login in (self.cappbot_user.login, self.alice_user.login)])
+        collaborator_users = (self.cappbot_user, self.alice_user)
+        collaborators = mini_github3.Collaborators.from_dict([{'login': user.login} for user in collaborator_users])
 
         self.cappbot.github.Collaborators.by_repository = Mock(return_value=collaborators)
         self.cappbot.github.Labels.by_repository = Mock(return_value=labels)
@@ -126,7 +127,16 @@ class TestCappBot(unittest.TestCase):
                         if any(not label for label in new_v):
                             raise Exception("mock patch: no such label(s) in %s" % v)
                         v = new_v
+
+                    # Assignee is the same.
+                    if k == 'assignee' and v is not None:
+                        new_v = first(user for user in collaborator_users if user.login == v)
+                        if not new_v:
+                            raise Exception("mock patch: no such collaborator %s" % v)
+                        v = new_v
+
                     setattr(issue, k, v)
+
             issue.patch = Mock(side_effect=mock_patch)
 
         map(install_issue_mock_patch, issues)
@@ -168,7 +178,7 @@ class TestCappBot(unittest.TestCase):
         return issues, labels, milestones
 
     def test_install_defaults(self):
-        issues, labels, milestones = self.configure_github_mock(load_fixture('issues.json')[7:8], load_fixture('labels.json'), [load_fixture('milestone.json')])
+        issues, labels, milestones = self.configure_github_mock(load_fixture('issues.json')[7:8], load_fixture('labels.json'), load_fixture('milestones.json'))
 
         self.cappbot.run()
 
@@ -185,7 +195,7 @@ class TestCappBot(unittest.TestCase):
     def test_ignore_deja_vu(self):
         cappbot_comment = [self.fake_comment(self.cappbot_user, 'Hello.')]
 
-        issues, labels, milestones = self.configure_github_mock(load_fixture('issues.json')[7:8], load_fixture('labels.json'), [load_fixture('milestone.json')], [cappbot_comment])
+        issues, labels, milestones = self.configure_github_mock(load_fixture('issues.json')[7:8], load_fixture('labels.json'), load_fixture('milestones.json'), [cappbot_comment])
 
         self.cappbot.run()
 
@@ -194,7 +204,7 @@ class TestCappBot(unittest.TestCase):
         self.assertEquals([c.body for c in issues[0]._mock_comments], ['Hello.'])
 
     def test_action_by_comment_label(self):
-        issues, labels, milestones = self.configure_github_mock(load_fixture('issues.json')[7:8], load_fixture('labels.json'), [load_fixture('milestone.json')], [[self.fake_comment(self.alice_user, 'Very enhancing.\n\n+enhancement')]])
+        issues, labels, milestones = self.configure_github_mock(load_fixture('issues.json')[7:8], load_fixture('labels.json'), load_fixture('milestones.json'), [[self.fake_comment(self.alice_user, 'Very enhancing.\n\n+enhancement')]])
 
         self.cappbot.run()
 
@@ -202,7 +212,7 @@ class TestCappBot(unittest.TestCase):
         self.assertEquals(issues[0]._mock_comments[-1].body, "**Milestone:** Someday.  **Labels:** #new, enhancement.  **What's next?** A reviewer should examine this issue.")
 
     def test_multiple_actions_by_comment_label(self):
-        issues, labels, milestones = self.configure_github_mock(load_fixture('issues.json')[7:8], load_fixture('labels.json'), [load_fixture('milestone.json')], [[
+        issues, labels, milestones = self.configure_github_mock(load_fixture('issues.json')[7:8], load_fixture('labels.json'), load_fixture('milestones.json'), [[
                 self.fake_comment(self.alice_user, 'Very enhancing.\n\n+enhancement\n+#needs-test'),
                 self.fake_comment(self.bob_user, '-enhancement\n\n-#needs-test\n+#new\n#acknowledged'),
                 self.fake_comment(self.alice_user, "These aren't labels.\n+#hello\n-balloon"),
@@ -215,7 +225,7 @@ class TestCappBot(unittest.TestCase):
         self.assertEquals(issues[0]._mock_comments[-1].body, "**Milestone:** Someday.  **Labels:** #needs-test, #new.  **What's next?** A reviewer should examine this issue.")
 
     def test_action_by_comment_unauthorised(self):
-        issues, labels, milestones = self.configure_github_mock(load_fixture('issues.json')[6:7], load_fixture('labels.json'), [load_fixture('milestone.json')], [[self.fake_comment(self.chuck_user, 'I am Chuck and I accept this issue.\n\n+#accepted')]])
+        issues, labels, milestones = self.configure_github_mock(load_fixture('issues.json')[6:7], load_fixture('labels.json'), load_fixture('milestones.json'), [[self.fake_comment(self.chuck_user, 'I am Chuck and I accept this issue.\n\n+#accepted')]])
 
         self.cappbot.send_message = Mock()
         self.cappbot.run()
@@ -228,7 +238,7 @@ class TestCappBot(unittest.TestCase):
         self.assertEquals(issues[0]._mock_comments[-1].body, u"**Labels:** enhancement, question.  **What's next?** A reviewer should examine this issue.")
 
     def test_action_by_comment_close_issue(self):
-        issues, labels, milestones = self.configure_github_mock(load_fixture('issues.json')[7:8], load_fixture('labels.json'), [load_fixture('milestone.json')], [[self.fake_comment(self.alice_user, 'Stupid.\n#wont-fix')]])
+        issues, labels, milestones = self.configure_github_mock(load_fixture('issues.json')[7:8], load_fixture('labels.json'), load_fixture('milestones.json'), [[self.fake_comment(self.alice_user, 'Stupid.\n#wont-fix')]])
 
         self.cappbot.run()
 
@@ -241,7 +251,7 @@ class TestCappBot(unittest.TestCase):
         self.assertEquals(issues[0]._mock_comments[-1].body, "**Milestone:** Someday.  **Label:** #wont-fix.  **What's next?** A reviewer or core team member has decided against acting upon this issue.")
 
     def test_action_by_comment_open_issue(self):
-        issues, labels, milestones = self.configure_github_mock(load_fixture('issues.json')[7:8], load_fixture('labels.json'), [load_fixture('milestone.json')], [[self.fake_comment(self.alice_user, 'Not actually fixed. \n-#fixed')]])
+        issues, labels, milestones = self.configure_github_mock(load_fixture('issues.json')[7:8], load_fixture('labels.json'), load_fixture('milestones.json'), [[self.fake_comment(self.alice_user, 'Not actually fixed. \n-#fixed')]])
         issues[0].labels = [labels[6]]
         issues[0].state = 'closed'
 
@@ -255,9 +265,62 @@ class TestCappBot(unittest.TestCase):
         self.assertEquals(issues[0]._mock_comments[-1].body, "**What's next?** A reviewer should examine this issue.")
 
     def test_action_by_comment_case_insensitive(self):
-        issues, labels, milestones = self.configure_github_mock(load_fixture('issues.json')[7:8], load_fixture('labels.json'), [load_fixture('milestone.json')], [[self.fake_comment(self.alice_user, 'Very enhancing.\n\n+foundation')]])
+        issues, labels, milestones = self.configure_github_mock(load_fixture('issues.json')[7:8], load_fixture('labels.json'), load_fixture('milestones.json'), [[self.fake_comment(self.alice_user, 'Very enhancing.\n\n+foundation')]])
 
         self.cappbot.run()
 
         issues[0].patch.assert_has_calls([call(labels=[u'#new'], milestone=2), call(labels=[u'#new', u'Foundation'])])
         self.assertEquals(issues[0]._mock_comments[-1].body, "**Milestone:** Someday.  **Labels:** #new, Foundation.  **What's next?** A reviewer should examine this issue.")
+
+    def test_action_by_comment_milestone(self):
+        # Milestones can have all kinds of funny characters.
+        issues, labels, milestones = self.configure_github_mock(load_fixture('issues.json')[7:8], load_fixture('labels.json'), load_fixture('milestones.json'), [[self.fake_comment(self.alice_user, '''Very enhancing.\n\nmilestone=-_+=.,/'\";;:MiLe SToNe''')]])
+
+        self.cappbot.run()
+
+        issues[0].patch.assert_has_calls([call(labels=[u'#new'], milestone=2), call(milestone=3)])
+        self.assertEquals(issues[0]._mock_comments[-1].body, """**Milestone:** -_+=.,/'\";;:MiLe SToNe.  **Label:** #new.  **What's next?** A reviewer should examine this issue.""")
+
+    def test_action_by_comment_milestone_unauthorised(self):
+        issues, labels, milestones = self.configure_github_mock(load_fixture('issues.json')[7:8], load_fixture('labels.json'), load_fixture('milestones.json'), [[self.fake_comment(self.chuck_user, '''I am Chuck and I change this milestone.\n\nmilestone=1.0''')]])
+
+        self.cappbot.run()
+
+        issues[0].patch.assert_has_calls([call(labels=[u'#new'], milestone=2)])
+        self.assertEquals(issues[0]._mock_comments[-1].body, """**Milestone:** Someday.  **Label:** #new.  **What's next?** A reviewer should examine this issue.""")
+
+    def test_action_by_comment_assignee(self):
+        # Milestones can have all kinds of funny characters.
+        issues, labels, milestones = self.configure_github_mock(load_fixture('issues.json')[7:8], load_fixture('labels.json'), load_fixture('milestones.json'), [[self.fake_comment(self.alice_user, '''Very enhancing.\n\nassignee=alice_tester''')]])
+
+        self.cappbot.run()
+
+        issues[0].patch.assert_has_calls([call(labels=[u'#new'], milestone=2), call(assignee='alice_tester')])
+        self.assertEquals(issues[0]._mock_comments[-1].body, """**Assignee:** [alice_tester](https://github.com/alice_tester).  **Milestone:** Someday.  **Label:** #new.  **What's next?** A reviewer should examine this issue.""")
+
+    def test_action_by_comment_assignee_unauthorised(self):
+        issues, labels, milestones = self.configure_github_mock(load_fixture('issues.json')[7:8], load_fixture('labels.json'), load_fixture('milestones.json'), [[self.fake_comment(self.chuck_user, '''I am Chuck and I change this assignee.\n\nassignee=alice_tester''')]])
+
+        self.cappbot.send_message = Mock()
+        self.cappbot.run()
+
+        self.assertTrue(any(u'Ignoring unathorised attempt to alter assignee by chuck' in record for record in self.log_handler.formatted_records))
+
+        self.cappbot.send_message.assert_has_calls([])
+
+        issues[0].patch.assert_has_calls([call(labels=[u'#new'], milestone=2)])
+        self.assertEquals(issues[0]._mock_comments[-1].body, """**Milestone:** Someday.  **Label:** #new.  **What's next?** A reviewer should examine this issue.""")
+
+    def test_action_by_comment_assignee_noncollaborator(self):
+        # Bob is not a collaborator so cannot become the assignee.
+        issues, labels, milestones = self.configure_github_mock(load_fixture('issues.json')[7:8], load_fixture('labels.json'), load_fixture('milestones.json'), [[self.fake_comment(self.alice_user, '''Very enhancing.\n\nassignee=bob''')]])
+
+        self.cappbot.send_message = Mock()
+        self.cappbot.run()
+
+        self.assertTrue(any(u'Ignoring unknown assignee bob in comment 5207159 by alice_tester.' in record for record in self.log_handler.formatted_records))
+
+        self.cappbot.send_message.assert_has_calls([])
+
+        issues[0].patch.assert_has_calls([call(labels=[u'#new'], milestone=2)])
+        self.assertEquals(issues[0]._mock_comments[-1].body, """**Milestone:** Someday.  **Label:** #new.  **What's next?** A reviewer should examine this issue.""")
