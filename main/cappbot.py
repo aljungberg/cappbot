@@ -76,6 +76,8 @@ from mini_github3 import GitHub
 
 ADD_LABEL_REGEX = re.compile(r'^\+([-\w\d _#]*[-\w\d_#]+)$|^(#[-\w\d _#]*[-\w\d_#]+)$')
 REMOVE_LABEL_REGEX = re.compile(r'^-([-\w\d _#]*[-\w\d_#]+)$')
+SET_MILESTONE_REGEX = re.compile(r'^milestone=(.+)$')  # Assume pretty much any character is valid in a milestone title.
+SET_ASSIGNEE_REGEX = re.compile(r'^assignee=([-\w\d_#]+)$')
 
 VOTE_REGEX = re.compile(r'^[-\+][01]$')
 
@@ -86,6 +88,16 @@ def is_issue_new(issue):
     """Return True if an issue hasn't been manually configured before CappBot got to it."""
 
     return issue.milestone is None and issue.assignee is None and not any(label for label in issue.labels)
+
+
+def get_milestone_title(milestone):
+    """Return None if no milestone, else milestone.title."""
+    return milestone.title if milestone else None
+
+
+def get_user_login(user):
+    """Return None if no user, else user.login."""
+    return user.login if user else None
 
 
 class CappBot(object):
@@ -253,6 +265,12 @@ class CappBot(object):
     def user_may_alter_labels(self, user):
         return 'labels' in self.settings.PERMISSIONS.get(user.login, ())
 
+    def user_may_set_assignee(self, user):
+        return 'assignee' in self.settings.PERMISSIONS.get(user.login, ())
+
+    def user_may_set_milestone(self, user):
+        return 'milestone' in self.settings.PERMISSIONS.get(user.login, ())
+
     def get_label_by_name(self, aLabel):
         """Get the label with the proper capitalisation among those available, or None if the label is not available."""
         aLabel = aLabel.lower()
@@ -261,19 +279,40 @@ class CappBot(object):
                 return label
         return None
 
-    def add_label(self, new_label, labels):
+    def get_milestone_title_by_title(self, aMilestone):
+        """Get the milestone title with the proper capitalisation among those available, or None if the milestone is not available."""
+        aMilestone = aMilestone.lower()
+        for milestone in self.known_milestones:
+            if milestone.lower() == aMilestone:
+                return milestone
+        return None
+
+    def get_assignee_login_by_name(self, anAssignee):
+        """Get the assignee login with the proper capitalisation among those available, or None if the assignee is not available.
+
+        Note that only repository collaborators can become assigned to an issue.
+
+        """
+
+        anAssignee = anAssignee.lower()
+        for assignee in self.collaborator_logins:
+            if assignee.lower() == anAssignee:
+                return assignee
+        return None
+
+    def add_label(self, new_label, issue_working_state):
         new_label_proper = self.get_label_by_name(new_label)
 
-        if new_label_proper in labels:
+        if new_label_proper in issue_working_state['labels']:
             # Ensure we move this new label to the end of the list. We need to know which
             # label was added last later.
-            labels.remove(new_label_proper)
-        labels.append(new_label_proper)
+            issue_working_state['labels'].remove(new_label_proper)
+        issue_working_state['labels'].append(new_label_proper)
         if any(l.lower() == new_label_proper.lower() for l in self.settings.CLOSE_ISSUE_WHEN_CAPPBOT_ADDS_LABEL) or self.should_open_issue is new_label_proper:
             self.should_open_issue = False
             self.should_close_issue = new_label_proper
 
-    def add_label_due_to_comment(self, new_label, comment, labels):
+    def add_label_due_to_comment(self, new_label, comment, issue_working_state):
         new_label_proper = self.get_label_by_name(new_label)
         if not new_label_proper:
             logbook.info(u'Ignoring unknown label %s in comment %s by %s.' % (new_label, comment.url, comment.user.login))
@@ -285,20 +324,20 @@ class CappBot(object):
             self.send_message(comment.user, u'Unable to alter label', u'(Your comment)[%s] appears to request that the label `%s` is added to the issue but you do not have the required authorisation.' % (comment.url, new_label_proper))
         else:
             logbook.info("Adding label %s due to comment %s by %s" % (new_label_proper, comment.url, comment.user.login))
-            self.add_label(new_label_proper, labels)
+            self.add_label(new_label_proper, issue_working_state)
 
-    def remove_label(self, remove_label, labels):
+    def remove_label(self, remove_label, issue_working_state):
         remove_label_proper = self.get_label_by_name(remove_label)
 
-        if not remove_label_proper in labels:
+        if not remove_label_proper in issue_working_state['labels']:
             return
 
-        labels.remove(remove_label_proper)
+        issue_working_state['labels'].remove(remove_label_proper)
         if any(l.lower() == remove_label_proper.lower() for l in self.settings.OPEN_ISSUE_WHEN_CAPPBOT_REMOVES_LABEL) or self.should_close_issue is remove_label_proper:
             self.should_open_issue = remove_label_proper
             self.should_close_issue = False
 
-    def remove_label_due_to_comment(self, remove_label, comment, labels):
+    def remove_label_due_to_comment(self, remove_label, comment, issue_working_state):
         remove_label_proper = self.get_label_by_name(remove_label)
 
         if not remove_label_proper in self.known_labels:
@@ -311,12 +350,60 @@ class CappBot(object):
             self.send_message(comment.user, u'Unable to alter label', u'(Your comment)[%s] appears to request that the label `%s` is removed from the issue but you do not have the required authorisation.' % (comment.url, remove_label_proper))
         else:
             logbook.info("Removing label %s due to comment %s by %s" % (remove_label_proper, comment.id, comment.user.login))
-            self.remove_label(remove_label_proper, labels)
+            self.remove_label(remove_label_proper, issue_working_state)
 
-    def altered_labels_by_interpreting_new_comments(self, issue, labels):
+    def set_milestone(self, new_milestone, issue_working_state):
+        new_milestone_proper = self.get_milestone_title_by_title(new_milestone)
+
+        if new_milestone_proper == issue_working_state['milestone']:
+            return
+
+        issue_working_state['milestone'] = new_milestone_proper
+
+    def set_milestone_due_to_comment(self, new_milestone, comment, issue_working_state):
+        new_milestone_proper = self.get_milestone_title_by_title(new_milestone)
+
+        if not new_milestone_proper:
+            logbook.info(u'Ignoring unknown milestone %s in comment %s by %s.' % (new_milestone, comment.id, comment.user.login))
+            self.send_message(comment.user, u'Unknown milestone', u'(Your comment)[%s] appears to request that the milestone `%s` is set for the issue but this does not seems to be a valid milestone.' % (comment.url, new_milestone))
+            return
+
+        if not self.user_may_set_milestone(comment.user):
+            logbook.warning(u"Ignoring unathorised attempt to alter milestone by %s through comment %s." % (comment.user.login, comment.url))
+            self.send_message(comment.user, u'Unable to alter milestone', u'(Your comment)[%s] appears to request that the milestone `%s` is set for the issue but you do not have the required authorisation.' % (comment.url, new_milestone_proper))
+        else:
+            logbook.info("Setting milestone %s due to comment %s by %s" % (new_milestone_proper, comment.id, comment.user.login))
+            self.set_milestone(new_milestone_proper, issue_working_state)
+
+    def set_assignee(self, new_assignee, issue_working_state):
+        new_assignee_proper = self.get_assignee_login_by_name(new_assignee)
+
+        if new_assignee_proper == issue_working_state['assignee']:
+            return
+
+        issue_working_state['assignee'] = new_assignee_proper
+
+    def set_assignee_due_to_comment(self, new_assignee, comment, issue_working_state):
+        new_assignee_proper = self.get_assignee_login_by_name(new_assignee)
+
+        if not new_assignee_proper:
+            logbook.info(u'Ignoring unknown assignee %s in comment %s by %s.' % (new_assignee, comment.id, comment.user.login))
+            self.send_message(comment.user, u'Unknown assignee', u'(Your comment)[%s] appears to request that the assignee `%s` is set for the issue but this does not seems to be a repository collaborator.' % (comment.url, new_assignee))
+            return
+
+        if not self.user_may_set_assignee(comment.user):
+            logbook.warning(u"Ignoring unathorised attempt to alter assignee by %s through comment %s." % (comment.user.login, comment.url))
+            self.send_message(comment.user, u'Unable to alter assignee', u'(Your comment)[%s] appears to request that the assignee `%s` is set for the issue but you do not have the required authorisation.' % (comment.url, new_assignee_proper))
+        else:
+            logbook.info("Setting assignee %s due to comment %s by %s" % (new_assignee_proper, comment.id, comment.user.login))
+            self.set_assignee(new_assignee_proper, issue_working_state)
+
+    def updated_state_by_interpreting_new_comments(self, issue, issue_working_state):
+        issue_working_state = issue_working_state.copy()
+
         new_comments = self.get_new_comments(issue)
         # Make sure we have the right label capitalisation.
-        labels = [self.get_label_by_name(l) for l in labels]
+        issue_working_state['labels'] = [self.get_label_by_name(l) for l in issue_working_state['labels']]
 
         logbook.debug(u"Examining %d new comment(s) for %s" % (len(new_comments), issue))
 
@@ -334,37 +421,52 @@ class CappBot(object):
                 m = ADD_LABEL_REGEX.match(line)
                 if m:
                     new_label = (m.group(1) or m.group(2)).lower()
-                    self.add_label_due_to_comment(new_label, comment, labels)
+                    self.add_label_due_to_comment(new_label, comment, issue_working_state)
+                    continue
 
                 m = REMOVE_LABEL_REGEX.match(line)
                 if m:
                     remove_label = m.group(1).lower()
-                    self.remove_label_due_to_comment(remove_label, comment, labels)
+                    self.remove_label_due_to_comment(remove_label, comment, issue_working_state)
+                    continue
 
-        return labels
+                m = SET_MILESTONE_REGEX.match(line)
+                if m:
+                    new_milestone = m.group(1).lower()
+                    self.set_milestone_due_to_comment(new_milestone, comment, issue_working_state)
+                    continue
 
-    def altered_labels_per_removal_rules(self, issue, labels):
+                m = SET_ASSIGNEE_REGEX.match(line)
+                if m:
+                    new_assignee = m.group(1).lower()
+                    self.set_assignee_due_to_comment(new_assignee, comment, issue_working_state)
+                    continue
+
+        return issue_working_state
+
+    def updated_state_per_label_removal_rules(self, issue, issue_working_state):
+        issue_working_state = issue_working_state.copy()
         for trigger_label, labels_to_remove in self.settings.WHEN_LABEL_REMOVE_LABELS.items():
-            if trigger_label in labels:
+            if trigger_label in issue_working_state['labels']:
                 for label in labels_to_remove:
-                    if label in labels:
+                    if label in issue_working_state['labels']:
                         logbook.info("Removing label %s due to label %s being set." % (label, trigger_label))
                         # This ensures that side effects of removing the label kick in.
-                        self.remove_label(label, labels)
+                        self.remove_label(label, issue_working_state)
 
         # Remove conflicting labels.
-        backwards = list(reversed(labels))
+        backwards = list(reversed(issue_working_state['labels']))
         for n, label in enumerate(backwards):
             if label in self.settings.MUTUALLY_EXCLUSIVE_LABELS:
                 for other_label in backwards[n + 1:]:
                     if other_label in self.settings.MUTUALLY_EXCLUSIVE_LABELS:
                         logbook.info("Removing label %s due to label %s being set." % (other_label, label))
                         # This ensures that side effects of removing the label kick in.
-                        self.remove_label(other_label, labels)
+                        self.remove_label(other_label, issue_working_state)
                 # We've removed all conflicting labels at this stage so we're done.
                 break
 
-        return labels
+        return issue_working_state
 
     def recount_votes(self, issue):
         """Search for comments with +1 or -1 on a line by itself, and count the last such line as the commenting
@@ -509,26 +611,48 @@ class CappBot(object):
             return
 
         original_labels = [label.name for label in issue.labels]
-        new_labels = original_labels[:]
+        issue_working_state = {'labels': original_labels[:], 'milestone': get_milestone_title(issue.milestone), 'assignee': get_user_login(issue.assignee)}
 
         did_change_votes = False
         if 'comments' in changes:
-            # Check for action comments which change labels.
-            new_labels = self.altered_labels_by_interpreting_new_comments(issue, new_labels)
+            # Check for action comments which change labels, milestones or assigngee.
+            issue_working_state = self.updated_state_by_interpreting_new_comments(issue, issue_working_state)
             self.record_latest_seen_comment(issue)
 
             # Count votes.
             did_change_votes = self.recount_votes(issue)
 
         # Remove labels superseded by new labels.
-        new_labels = self.altered_labels_per_removal_rules(issue, new_labels)
+        issue_working_state = self.updated_state_per_label_removal_rules(issue, issue_working_state)
 
-        if set(new_labels) != set(original_labels) and not self.dry_run:
-            try:
-                issue.patch(labels=sorted(map(unicode, new_labels)))
-            except:
-                logbook.error(u"Unable to set %s labels to %s" % (issue, sorted(map(unicode, new_labels))))
-                raise
+        # Perform each patch separately so that an error with one does not disrupt the others.
+        if set(issue_working_state['labels']) != set(original_labels):
+            changes.add('labels')
+            if not self.dry_run:
+                try:
+                    issue.patch(labels=sorted(map(unicode, issue_working_state['labels'])))
+                except:
+                    logbook.error(u"Unable to set %s labels to %s" % (issue, sorted(map(unicode, issue_working_state['labels']))))
+                    raise
+
+        if issue_working_state['milestone'] != get_milestone_title(issue.milestone):
+            changes.add('milestone')
+            if not self.dry_run:
+                try:
+                    milestone = self.github.Milestones.get_or_create_in_repository(self.repo_user, self.repo_name, issue_working_state['milestone'])
+                    issue.patch(milestone=milestone.number)
+                except:
+                    logbook.error(u"Unable to set %s milestone to %s" % (issue, milestone))
+                    raise
+
+        if issue_working_state['assignee'] != get_user_login(issue.assignee):
+            changes.add('assignee')
+            if not self.dry_run:
+                try:
+                    issue.patch(assignee=issue_working_state['assignee'])
+                except:
+                    logbook.error(u"Unable to set %s assignee to %s" % (issue, milestone))
+                    raise
 
         # Post paper trail.
         changes = changes.difference(set(['comments']))
@@ -554,7 +678,7 @@ class CappBot(object):
                     logbook.error(u"Unable to set the title of %s to %s" % (issue, issue_title))
                     raise
 
-        if new_labels != original_labels:
+        if issue_working_state['labels'] != original_labels:
             changes.add('labels')
         if len(changes):
             # If we're going to reopen the issue, do that before leaving the paper trail.
@@ -567,7 +691,10 @@ class CappBot(object):
                         logbook.error(u"Unable to open %s" % issue)
                         raise
 
-            msg = self.settings.getPaperTrailMessage(issue.assignee.login if issue.assignee else None, issue.milestone.title if issue.milestone else None, new_labels, self.get_vote_count(issue))
+            # Note that we assume the issue_working_state has been properly installed into the issue. This
+            # makes the messages appear right in dry-run mode. However, if say the assignee wasn't successfully
+            # changed, CappBot's message might suggest it was. I think that's fine.
+            msg = self.settings.getPaperTrailMessage(issue_working_state['assignee'], issue_working_state['milestone'], issue_working_state['labels'], self.get_vote_count(issue))
             comment = self.github.Comment()
             comment.body = msg
             logbook.info(u"Adding paper trail for %s (changes: %s): '%s'" % (issue, ", ".join(changes), msg))
@@ -599,6 +726,8 @@ class CappBot(object):
         self.ensure_referenced_labels_exist()
 
         self.known_labels = set(label.name for label in self.github.Labels.by_repository(self.repo_user, self.repo_name, per_page=100, all_pages=True))
+
+        self.known_milestones = set(milestone.title for milestone in self.github.Milestones.by_repository(self.repo_user, self.repo_name, per_page=100, all_pages=True))
 
         # Everyone who's a collborator automatically has permissions to do everything.
         self.collaborator_logins = set(c.login for c in self.github.Collaborators.by_repository(self.repo_user, self.repo_name, per_page=100, all_pages=True))
