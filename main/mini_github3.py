@@ -344,7 +344,7 @@ class Milestones(GitHubRemoteListObject):
         if milestone_title is None:
             return None
 
-        milestones = cls.by_repository(user_name, repo_name, per_page=100, all_pages=True)
+        milestones = cls.by_repository_all(user_name, repo_name, per_page=100, all_pages=True)
         for milestone in milestones:
             if milestone.title == milestone_title:
                 return milestone
