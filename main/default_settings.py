@@ -68,10 +68,31 @@ WHEN_LABEL_REMOVE_LABELS = {
         '#ready-to-commit'
     ],
 
+    '#wont-fix': [
+        '#needs-confirmation',
+        '#needs-docs',
+        '#needs-improvement',
+        '#needs-info',
+        '#needs-patch',
+        '#needs-reduction',
+        '#needs-review',
+        '#needs-unit-test',
+        '#ready-to-commit'
+    ],
+
     # Duplicate is almost like a state label but it's not unreasonable for people to want to
     # assign both "duplicate" and a state label to an issue so it's not in the exclusive list.
     '#duplicate': [
         '#new',
+        '#needs-confirmation',
+        '#needs-docs',
+        '#needs-improvement',
+        '#needs-info',
+        '#needs-patch',
+        '#needs-reduction',
+        '#needs-review',
+        '#needs-unit-test',
+        '#ready-to-commit'
     ]
 }
 
