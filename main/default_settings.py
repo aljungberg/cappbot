@@ -107,7 +107,7 @@ MUTUALLY_EXCLUSIVE_LABELS = [
 
 # If this label is added using a CappBot command, also close the issue.
 CLOSE_ISSUE_WHEN_CAPPBOT_ADDS_LABEL = [
-    '#wont-fix', '#works-for-me', '#fixed'
+    '#wont-fix', '#works-for-me', '#fixed', '#duplicate'
 ]
 
 # And reopen it if the labels are removed.
