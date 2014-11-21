@@ -69,6 +69,7 @@ import os
 import re
 import sys
 import time
+import shutil
 
 import iso8601
 
@@ -787,17 +788,31 @@ if __name__ == '__main__':
 
     settings = imp.load_source('settings', args.settings if os.path.exists(args.settings) else os.path.join(os.path.dirname(__file__), 'default_settings.py'))
 
-    if os.path.exists(settings.DATABASE):
-        with open(settings.DATABASE, 'rb') as f:
+    DATABASE = settings.DATABASE
+    NEW_DATABASE = DATABASE + ".new"
+
+    if os.path.exists(NEW_DATABASE):
+        # If we failed to mv the new database to the old name, that might have been because we crashed while writing the
+        # new one, in which case the old database might be better to preserve. Or it might be that we wrote .new but
+        # failed to mv() in which case the new is better to preserve. So this error situation requires manual
+        # intervention.
+        raise Exception("{} exists. Manually resolve if {} or {} is less bad and then mv and rm by hand to resolve.".format(NEW_DATABASE, DATABASE, NEW_DATABASE))
+
+    if os.path.exists(DATABASE):
+        with open(DATABASE, 'rb') as f:
             database = json.load(f)
     else:
         database = {}
 
+    def save_database():
+        if not args.dry_run:
+            with open(NEW_DATABASE, 'wb') as f:
+                json.dump(database, f, indent=1, sort_keys=True)
+            shutil.move(NEW_DATABASE, DATABASE)
+
     # Write to the database immediately to verify we have write permission and disk space.
     # We don't want to find out that there is a problem at the end and lose all the data.
-    if not args.dry_run:
-        with open(settings.DATABASE, 'wb') as f:
-            json.dump(database, f, indent=1, sort_keys=True)
+    save_database()
 
     log_level = (logbook.WARNING, logbook.INFO, logbook.DEBUG)[min(2, len(args.verbose or []))]
     null_handler = logbook.NullHandler()
@@ -807,6 +822,4 @@ if __name__ == '__main__':
                 try:
                     CappBot(settings, database, dry_run=args.dry_run, memorise_forgotten=args.memorise_forgotten, ignore=[int(n) for n in args.ignore] if args.ignore else []).run()
                 finally:
-                    if not args.dry_run:
-                        with open(settings.DATABASE, 'wb') as f:
-                            json.dump(database, f, indent=1, sort_keys=True)
+                    save_database()

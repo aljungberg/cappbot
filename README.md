@@ -39,5 +39,4 @@ Running the Unit Tests
 ----------------------
 
     pip install mock  # an extra requirement only when running the unit tests.
-    cd main
-    python -m unittest cappbot_test
+    (cd main && python -m unittest cappbot_test)
