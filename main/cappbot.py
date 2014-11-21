@@ -1,4 +1,4 @@
-#! /usr/bin/env python
+#!/usr/bin/env python
 # -*- coding: utf8 -*-
 
 #
@@ -797,7 +797,7 @@ if __name__ == '__main__':
     # We don't want to find out that there is a problem at the end and lose all the data.
     if not args.dry_run:
         with open(settings.DATABASE, 'wb') as f:
-            json.dump(database, f, indent=2, sort_keys=True)
+            json.dump(database, f, indent=1, sort_keys=True)
 
     log_level = (logbook.WARNING, logbook.INFO, logbook.DEBUG)[min(2, len(args.verbose or []))]
     null_handler = logbook.NullHandler()
@@ -809,4 +809,4 @@ if __name__ == '__main__':
                 finally:
                     if not args.dry_run:
                         with open(settings.DATABASE, 'wb') as f:
-                            json.dump(database, f, indent=2, sort_keys=True)
+                            json.dump(database, f, indent=1, sort_keys=True)
