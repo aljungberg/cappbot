@@ -107,7 +107,7 @@ class TestCappBot(unittest.TestCase):
 
         self.cappbot.github.Collaborators.by_repository = Mock(return_value=collaborators)
         self.cappbot.github.Labels.by_repository = Mock(return_value=labels)
-        self.cappbot.github.Milestones.by_repository = Mock(return_value=milestones)
+        self.cappbot.github.Milestones.by_repository_all = Mock(return_value=milestones)
 
         def install_issue_mock_patch(issue):
             def mock_patch(*args, **kwargs):
