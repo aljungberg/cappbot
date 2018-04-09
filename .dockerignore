@@ -1,0 +1,4 @@
+.idea
+*.pyc
+#settings.py
+#cappbot-db.json

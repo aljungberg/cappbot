@@ -21,14 +21,16 @@ Perform various automation and paper trail functionality on GitHub issues to aug
 Installation
 ------------
 
-The recommended way to use CappBot is within `virtualenv` (and this is probably the best way to run server side Python software in general.)
+The recommended way to use CappBot is with Docker.
 
-    curl -O https://raw.github.com/pypa/virtualenv/master/virtualenv.py
-    python virtualenv.py cappbot_env
-    . cappbot_env/bin/activate
-    pip install -r requirements.txt
+    docker build -t cappbot -f Dockerfile .
+    
     cp main/settings-sample.py settings.py
     # edit settings.py
+
+    # Example
+    mkdir var    
+    docker run --rm  -v $PWD/settings.py:/usr/src/app/settings.py:ro -v $PWD/var/:/var/cappbot cappbot:latest
 
 Usage
 -----
