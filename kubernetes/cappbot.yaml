@@ -1,0 +1,30 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: cappbot
+  labels:
+    app: cappbot
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cappbot
+  template:
+    metadata:
+      labels:
+        app: cappbot
+    spec:
+      containers:
+        - image: gcr.io/cappuccino-200617/cappbot:0.2.2
+          name: cappbot
+          env:
+            - name: SETTINGS
+              value: /var/lib/cappbot/settings.py
+          volumeMounts:
+            - name: cappbot-persistent-storage
+              mountPath: /var/lib/cappbot
+      volumes:
+        - name: cappbot-persistent-storage
+          gcePersistentDisk:
+            pdName: cappbot-disk
+            fsType: ext4

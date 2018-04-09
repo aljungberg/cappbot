@@ -32,6 +32,23 @@ The recommended way to use CappBot is with Docker.
     mkdir var    
     docker run --rm  -v $PWD/settings.py:/usr/src/app/settings.py:ro -v $PWD/var/:/var/cappbot cappbot:latest
 
+Running
+-------
+
+Ok these instructions are pretty vague but basically it's this, to run in GKE:
+
+    gcloud container builds submit --tag gcr.io/cappuccino-200617/cappbot:0.2.2 .
+    
+    # ... create a temporary container with the persistent volume mounted and copy settings inside ...
+    kubectl create ...something...
+    kubectl cp settings.py cappbot-<x>:/var/lib/cappbot/
+    # delete it
+    
+    # Now run the real deal:
+    kubectl create kubernetes/cappbot.yaml
+
+    # Apply an update:
+    kubectl apply -f kubernetes/cappbot.yaml
 Usage
 -----
 

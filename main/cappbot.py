@@ -4,7 +4,7 @@
 #
 # BSD License
 #
-# Copyright (c) 2011-12, Alexander Ljungberg
+# Copyright (c) 2011-18, Alexander Ljungberg
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -32,10 +32,6 @@ Perform various automation and paper trail functionality on GitHub issues to aug
      * Track voting: if a user writes +1 or -1 on a line by itself, CappBot records that user's vote and writes the tally of votes in the issue title. E.g. `Reduce load time [+3]`.
 
 """
-
-# Requirements:
-#
-#     pip install remoteobjects
 
 # TODO
 # In the future, CappBot can be extended to support issue triaging in general:
@@ -745,7 +741,7 @@ class CappBot(object):
 
         self.known_milestones = set(milestone.title for milestone in self.github.Milestones.by_repository_all(self.repo_user, self.repo_name, per_page=100, all_pages=True))
 
-        # Everyone who's a collborator automatically has permissions to do everything.
+        # Everyone who's a collaborator automatically has permissions to do everything.
         self.collaborator_logins = set(c.login for c in self.github.Collaborators.by_repository(self.repo_user, self.repo_name, per_page=100, all_pages=True))
         for login in self.collaborator_logins:
             self.settings.PERMISSIONS[login] = ['labels', 'assignee', 'milestone']
