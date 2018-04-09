@@ -1,2 +1,3 @@
 /secret_api_token.txt
 *.pyc
+/.idea
