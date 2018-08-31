@@ -49,6 +49,7 @@ Ok these instructions are pretty vague but basically it's this, to run in GKE:
 
     # Apply an update:
     kubectl apply -f kubernetes/cappbot.yaml
+    
 Usage
 -----
 
